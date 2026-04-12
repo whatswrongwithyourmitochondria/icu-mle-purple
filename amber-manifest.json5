@@ -4,6 +4,7 @@
   config_schema: {
     type: "object",
     properties: {
+      llm_base_url: { type: "string" },
       nebius_api_key: { type: "string", secret: true },
     },
     required: ["nebius_api_key"],
@@ -15,10 +16,11 @@
   },
 
   program: {
-    image: "ghcr.io/rdi-foundation/mle-bench-purple-upd:latest",
+    image: "ghcr.io/whatswrongwithyourmitochondria/icu-mle-purple:latest",
     entrypoint: "uv run python src/server.py --host 0.0.0.0 --port 9009",
 
     env: {
+      LLM_BASE_URL: "${config.llm_base_url}",
       NEBIUS_API_KEY: "${config.nebius_api_key}",
     },
 

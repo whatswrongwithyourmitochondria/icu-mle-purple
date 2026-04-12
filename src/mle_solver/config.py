@@ -91,24 +91,28 @@ class Config:
             self.exec.timeout = float(exec_block["timeout"])
 
     def resolve_env(self) -> None:
-        if self.llm.api_key:
-            return
-        # Match env var to base_url so the right provider key is picked when
-        # the user has multiple provider keys exported at once.
-        host = self.llm.base_url.lower()
-        if "nebius" in host:
-            preferred = ("NEBIUS_API_KEY",)
-        elif "anthropic" in host:
-            preferred = ("ANTHROPIC_API_KEY",)
-        elif "openai" in host:
-            preferred = ("OPENAI_API_KEY",)
-        else:
-            preferred = ()
-        for var in (*preferred, "NEBIUS_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
-            val = os.environ.get(var, "").strip()
-            if val:
-                self.llm.api_key = val
-                return
+        # Base URL from env overrides yaml.
+        base_url = os.environ.get("LLM_BASE_URL", "").strip()
+        if base_url:
+            self.llm.base_url = base_url
+
+        if not self.llm.api_key:
+            # Match env var to base_url so the right provider key is picked when
+            # the user has multiple provider keys exported at once.
+            host = self.llm.base_url.lower()
+            if "nebius" in host:
+                preferred = ("NEBIUS_API_KEY",)
+            elif "anthropic" in host:
+                preferred = ("ANTHROPIC_API_KEY",)
+            elif "openai" in host:
+                preferred = ("OPENAI_API_KEY",)
+            else:
+                preferred = ()
+            for var in (*preferred, "NEBIUS_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+                val = os.environ.get(var, "").strip()
+                if val:
+                    self.llm.api_key = val
+                    return
 
     def validate(self) -> list[str]:
         errs: list[str] = []
