@@ -1,0 +1,37 @@
+{
+  manifest_version: "0.1.0",
+
+  config_schema: {
+    type: "object",
+    properties: {
+      nebius_api_key: { type: "string", secret: true },
+    },
+    required: ["nebius_api_key"],
+    additionalProperties: false,
+  },
+
+  slots: {
+    proxy: { kind: "a2a", optional: true },
+  },
+
+  program: {
+    image: "ghcr.io/rdi-foundation/mle-bench-purple-upd:latest",
+    entrypoint: "uv run python src/server.py --host 0.0.0.0 --port 9009",
+
+    env: {
+      NEBIUS_API_KEY: "${config.nebius_api_key}",
+    },
+
+    network: {
+      endpoints: [
+        { name: "a2a_endpoint", port: 9009 },
+      ],
+    },
+  },
+
+  provides: {
+    a2a: { kind: "a2a", endpoint: "a2a_endpoint" },
+  },
+
+  exports: { a2a: "a2a" },
+}
