@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.4.0-cudnn-runtime-bookworm
+FROM python:3.13-bookworm
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
@@ -6,7 +6,7 @@ RUN adduser agent
 USER agent
 WORKDIR /home/agent
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md mle-solver.yaml ./
 COPY src src
 
 RUN \
