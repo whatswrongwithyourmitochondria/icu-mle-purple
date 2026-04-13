@@ -5,6 +5,7 @@ This repository contains a purple agent for the AgentBeats competition, focused 
 MLE-bench evaluates how well AI agents perform real-world machine learning engineering by testing them on 75 Kaggle competitions spanning data preparation, model training, and experiment iteration. It measures end-to-end ML problem-solving against human leaderboard baselines, making it a strong benchmark for agents designed to operate like practical ML engineers.
 
 This agent serves A2A requests, unpacks a competition bundle, runs a tree/panel search over candidate `solution.py` programs, and returns `submission.csv`.
+
 Current reported result: this implementation achieved a top benchmark score of **0.83103** on **`spaceship-titanic`**. (13th April, 2026)
 
 ## Scope and Positioning
