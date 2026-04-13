@@ -122,10 +122,12 @@ git clone https://github.com/openai/mle-bench.git
 
 Use at least two terminals.
 
+
+
 ### Terminal 1: run first agent
 
 ```bash
-cd mle-bench-purple-upd-parallel
+cd icu-mle-purple
 uv sync
 uv run src/server.py --port 9009
 ```
@@ -133,7 +135,7 @@ uv run src/server.py --port 9009
 ### Terminal 2: run second agent (for local assessment scenarios)
 
 ```bash
-cd mle-bench-purple-upd-parallel
+cd icu-mle-purple
 uv run src/server.py --port 9010
 ```
 
@@ -148,7 +150,7 @@ Use two terminals as well.
 ### Terminal 1: build and run container
 
 ```bash
-cd mle-bench-purple-upd-parallel
+cd icu-mle-purple
 docker build -t my-agent .
 docker run -p 9009:9009 my-agent
 ```
@@ -156,7 +158,7 @@ docker run -p 9009:9009 my-agent
 ### Terminal 2: run tests against containerized agent
 
 ```bash
-cd mle-bench-purple-upd-parallel
+cd icu-mle-purple
 uv sync --extra test
 uv run pytest --agent-url http://localhost:9009
 ```
