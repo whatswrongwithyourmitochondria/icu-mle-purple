@@ -146,10 +146,8 @@ This repo includes `test_assessment.py` to run local green-vs-purple style asses
 Example command (spaceship titanic):
 
 ```bash
-uv run test_assessment.py --green-port 9011 --purple-port 9012 --competition spaceship-titanic
+uv run test_assessment.py --green-port 9009 --purple-port 9010 --competition spaceship-titanic
 ```
-
-You can also run the two agents on `9009` and `9010` and pass those ports.
 
 ## Environment
 
