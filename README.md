@@ -80,7 +80,8 @@ Per-column blending:
 
 ## Model, Provider, and Current Parameters
 
-Current setup uses *Qwen3.5-397B-A17** through **Nebius** (https://tokenfactory.nebius.com/).
+Current setup uses **Qwen3.5-397B-A17** through **Nebius** (https://tokenfactory.nebius.com/).
+
 To use reasoning models like gpt-5.4 from OpenAI with the reasoning effort, you need to adjust the code and parameters accordingly. 
 
 ```yaml
