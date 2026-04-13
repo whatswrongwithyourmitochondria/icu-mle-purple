@@ -15,6 +15,61 @@ Current reported result: this implementation achieved a top benchmark score of *
 - Interface: A2A HTTP server (`src/server.py`)
 - Runtime model: panelized pass@K search + candidate review + final selection/blending
 
+## Project Structure
+icu-mle-purple/
+├─ .github/                      # CI/workflow configs
+├─ src/                          # Runtime server + solver implementation
+│  ├─ server.py                  # A2A HTTP server entrypoint
+│  ├─ agent.py                   # Agent orchestration (task -> solver -> artifact)
+│  ├─ executor.py                # Executes agent task flow
+│  ├─ messenger.py               # Status/progress messaging helpers
+│  └─ mle_solver/                # Core search-and-solve engine
+│     ├─ config.py               # YAML/env config loading + validation
+│     ├─ llm.py                  # LLM client wrapper
+│     ├─ panel.py                # pass@K seat fan-out + merge
+│     ├─ runner.py               # Top-level competition run pipeline
+│     ├─ ensemble.py             # Final submission blending logic
+│     ├─ agents/                 # LLM "roles" for code generation/evaluation
+│     │  ├─ code_gen.py          # Draft/improve/debug code generation
+│     │  ├─ parser.py            # Parse run outputs into structured scores
+│     │  └─ reviewer.py          # Suspicion/leakage review before final ranking
+│     ├─ exec/                   # Sandboxed execution utilities
+│     │  ├─ interpreter.py       # Runs candidate solution.py
+│     │  ├─ code_fix.py          # Quick auto-fixes for common code issues
+│     │  └─ fake_success.py      # Detects trivial/fake successful submissions
+│     ├─ prompts/                # Prompt templates for solver steps
+│     │  ├─ system.py            # Shared system prompt
+│     │  ├─ draft.py             # Draft prompt + dispositions
+│     │  ├─ improve.py           # Improve prompt + hint policy
+│     │  └─ debug.py             # Debug prompt templates
+│     ├─ protocol/               # Runner-owned evaluation protocol
+│     │  ├─ contract.py          # Infer task contract (metric/target/direction)
+│     │  └─ splits.py            # Build dev/holdout split artifacts
+│     └─ tree/                   # Search tree data structures + loop
+│        ├─ node.py              # Candidate node representation
+│        ├─ journal.py           # Run history/state tracking
+│        ├─ selector.py          # UCB-based branch selection
+│        ├─ ranking.py           # Final reranking/penalties
+│        └─ loop.py              # draft -> improve/debug -> finalize loop
+├─ tests/                        # Unit/integration tests
+│  ├─ conftest.py                # Shared pytest fixtures/options
+│  ├─ test_agent.py              # Agent/A2A surface tests
+│  ├─ test_config.py             # Config parsing/validation tests
+│  ├─ test_protocol.py           # Protocol/split logic tests
+│  ├─ test_tree.py               # Tree loop/selection tests
+│  ├─ test_parser.py             # Parser tests
+│  ├─ test_prompts.py            # Prompt construction tests
+│  ├─ test_reviewer.py           # Reviewer logic tests
+│  └─ test_fake_success.py       # Fake-success detection tests
+├─ test_assessment.py            # Local green-vs-purple assessment runner
+├─ mle-solver.yaml               # Main solver config (model/search/exec)
+├─ pyproject.toml                # Python project + dependencies
+├─ Dockerfile                    # Container build/runtime definition
+├─ amber-manifest.json5          # Agent manifest metadata
+├─ uv.lock                       # Locked dependency graph
+└─ README.md                     # Project documentation
+
+
 ## What Is Novel in This Implementation
 
 - Panelized pass@K seats: multiple independent search seats run in parallel with different seeds, temperatures, and dispositions, then merge globally.
