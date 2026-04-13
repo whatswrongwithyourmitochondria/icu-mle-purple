@@ -64,12 +64,12 @@ icu-mle-purple/
 │  ├─ test_reviewer.py           # Reviewer logic tests
 │  └─ test_fake_success.py       # Fake-success detection tests
 ├─ test_assessment.py            # Local green-vs-purple assessment runner
-├─ mle-solver.yaml               # Main solver config (model/search/exec)
-├─ pyproject.toml                # Python project + dependencies
-├─ Dockerfile                    # Container build/runtime definition
+├─ mle-solver.yaml               # Main solver config 
+├─ pyproject.toml                # Python dependencies
+├─ Dockerfile                    # Docker configuration
 ├─ amber-manifest.json5          # Agent manifest metadata
-├─ uv.lock                       # Locked dependency graph
-└─ README.md                     # Project documentation
+├─ uv.lock                       # 
+└─ README.md                     # Documentation
 ```
 
 
