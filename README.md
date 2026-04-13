@@ -6,11 +6,12 @@ MLE-bench evaluates how well AI agents perform real-world machine learning engin
 
 This agent serves A2A requests, unpacks a competition bundle, runs a tree/panel search over candidate `solution.py` programs, and returns `submission.csv`.
 
+
 ## Scope and Positioning
 
 - Target platform: AgentBeats purple-agent flow
 - Task type: Kaggle-style ML engineering tasks from MLE-bench
-- Interface: A2A HTTP server (`src/server.py`)
+- Interface: A2A HTTP server (`src/server.py`) 
 - Runtime model: panelized pass@K search + candidate review + final selection/blending
 
 ## What Is Novel in This Implementation
@@ -211,6 +212,7 @@ The code also supports provider-based fallback env vars (`OPENAI_API_KEY`, `ANTH
 ## References
 
 - AgentBeats tutorial: https://docs.agentbeats.dev/tutorial/
+- A2A protocol: https://a2a-protocol.org/latest/
 - MLE-bench GitHub: https://github.com/openai/mle-bench
 - MLE-bench paper (arXiv): https://arxiv.org/abs/2410.07095
 - MLE-bench overview: https://openai.com/index/mle-bench/
