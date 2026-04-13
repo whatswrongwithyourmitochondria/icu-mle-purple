@@ -1,29 +1,28 @@
 # MLE-Bench Purple Agent (AgentBeats Research Track)
 
-This repository contains a purple agent for the AgentBeats competition, focused on the MLE-bench Research Track https://agentbeats.dev/agentbeater/mle-bench
+This repository contains a purple agent for the AgentBeats competition, focused on the MLE-bench Research Track: https://agentbeats.dev/agentbeater/mle-bench
 
 MLE-bench evaluates how well AI agents perform real-world machine learning engineering by testing them on 75 Kaggle competitions spanning data preparation, model training, and experiment iteration. It measures end-to-end ML problem-solving against human leaderboard baselines, making it a strong benchmark for agents designed to operate like practical ML engineers.
 
 This agent serves A2A requests, unpacks a competition bundle, runs a tree/panel search over candidate `solution.py` programs, and returns `submission.csv`.
 
-
 ## Scope and Positioning
 
 - Target platform: AgentBeats purple-agent flow
 - Task type: Kaggle-style ML engineering tasks from MLE-bench
-- Interface: A2A HTTP server (`src/server.py`) 
+- Interface: A2A HTTP server (`src/server.py`)
 - Runtime model: panelized pass@K search + candidate review + final selection/blending
 
 ## What Is Novel in This Implementation
 
 - Panelized pass@K seats: multiple independent search seats run in parallel with different seeds, temperatures, and dispositions, then merge globally.
 - Tree search over code variants: each seat runs `draft -> improve/debug -> finalize` instead of one monolithic attempt.
-- UCB (Upper Confidence Bound)-style branch selection: branch expansion uses exploration/exploitation tradeoff (inspired by MLEvolve and AIDE ML implementations and Monte-Carlo graph/tree search ideas).
+- UCB (Upper Confidence Bound)-style branch selection: branch expansion uses exploration/exploitation tradeoff (inspired by MLEvolve, AIDE ML implementations, and Monte-Carlo graph/tree search ideas).
 - Debug-first policy with bounded repair budget: broken branches are repaired early, with explicit caps.
 - Runner-owned protocol split: holdout/CV protocol is prepared in the runner to reduce leakage-prone freedom in candidate code.
 - Reviewer-gated reranking: top candidates are LLM-reviewed for suspicious/leaky patterns before final ranking.
 - Fallback and anti-fake-success checks: detects trivial/submission-copy behavior and falls back safely when needed.
-- Diversity + final blending: seat diversity is intentional, and top clean candidates can be blended using holdout-weighted ensembling.
+- Diversity + final blending: seat diversity is intentional, and top clean candidates are blended using holdout-weighted ensembling when possible.
 
 ### UCB Selection Details
 
@@ -35,17 +34,17 @@ UCB(branch i) = mean_reward_i + c * sqrt( ln(total_plays + 1) / (plays_i + 1) )
 
 Where:
 
-- `c = ucb_explore_c` from config (default `1.0`).
-- `plays_i` = number of prior `improve` nodes in branch `i`.
-- `total_plays` = sum of `plays_i` over candidate branches.
-- `mean_reward_i` is not raw CV; it is min-max normalized branch score:
+- `c = ucb_explore_c` from config (default `1.0`)
+- `plays_i` = number of prior `improve` nodes in branch `i`
+- `total_plays` = sum of `plays_i` over candidate branches
+- `mean_reward_i` is min-max normalized branch score (not raw CV):
 
 ```text
 score_i = best_valid_cv_in_branch_i             (or -cv for minimize metrics)
 mean_reward_i = (score_i - min(score)) / (max(score) - min(score))
 ```
 
-If all branches have the same score, denominator is forced to `1.0`, so all `mean_reward_i = 0`.
+If all branches have the same score, denominator is set to `1.0`, so all `mean_reward_i = 0`.
 
 Debug policy is applied before UCB: buggy nodes are repaired first (up to `max_debug_attempts_per_node`) unless the branch already has a valid candidate.
 
@@ -68,7 +67,7 @@ Edge behavior:
 
 - If fewer than 2 valid holdout scores exist, all candidates get equal raw weight `1.0`.
 - Candidates with missing files, unreadable CSVs, or column mismatches are skipped.
-- At least 2 valid submissions are required to blend; otherwise the system falls back to best single candidate.
+- At least 2 valid submissions are required to blend; otherwise the system falls back to the best single candidate.
 
 Per-column blending:
 
@@ -77,12 +76,11 @@ Per-column blending:
 - Numeric columns use weighted average.
 - Non-numeric columns use weighted mode.
 
-
 ## Model, Provider, and Current Parameters
 
-Current setup uses **Qwen3.5-397B-A17** through **Nebius** (https://tokenfactory.nebius.com/).
+Current setup uses **Qwen3.5-397B-A17B-fast** through **Nebius** (https://tokenfactory.nebius.com/).
 
-To use reasoning models like gpt-5.4 from OpenAI with the reasoning effort, you need to adjust the code and parameters accordingly. 
+To use reasoning models like `gpt-5.4` with reasoning effort, adjust provider/model parameters and any client-specific settings accordingly.
 
 ```yaml
 llm:
@@ -111,7 +109,13 @@ search:
 
 ## Prerequisites
 
-1. Clone this repository.
+1. Clone this repository:
+
+```bash
+git clone --branch main https://github.com/whatswrongwithyourmitochondria/icu-mle-purple.git
+cd icu-mle-purple
+```
+
 2. Clone MLE-bench as well (for local benchmark workflows and assets):
 
 ```bash
@@ -121,8 +125,6 @@ git clone https://github.com/openai/mle-bench.git
 ## Running Locally
 
 Use at least two terminals.
-
-
 
 ### Terminal 1: run first agent
 
@@ -140,6 +142,7 @@ uv run src/server.py --port 9010
 ```
 
 Agent card examples:
+
 - `http://127.0.0.1:9009/.well-known/agent-card.json`
 - `http://127.0.0.1:9010/.well-known/agent-card.json`
 
@@ -155,7 +158,7 @@ docker build -t my-agent .
 docker run -p 9009:9009 my-agent
 ```
 
-### Terminal 2: run tests against containerized agent
+### Terminal 2: run tests against the containerized agent
 
 ```bash
 cd icu-mle-purple
@@ -184,7 +187,7 @@ docker run -p 9009:9009 my-agent
 ### Terminal B: run tests
 
 ```bash
-cd mle-bench-purple-upd-parallel
+cd icu-mle-purple
 uv sync --extra test
 uv run pytest --agent-url http://localhost:9009
 ```
@@ -199,7 +202,7 @@ uv run pytest tests/test_agent.py -q --agent-url http://localhost:9009
 
 This repo includes `test_assessment.py` to run local green-vs-purple style assessment.
 
-Example command (spaceship titanic):
+Example command (`spaceship-titanic`):
 
 ```bash
 uv run test_assessment.py --green-port 9009 --purple-port 9010 --competition spaceship-titanic
@@ -209,13 +212,14 @@ uv run test_assessment.py --green-port 9009 --purple-port 9010 --competition spa
 
 At minimum, set API credentials in `.env`:
 
-- `NEBIUS_API_KEY` (for Nebius provider)
+- `NEBIUS_API_KEY` (Nebius provider)
 
 The code also supports provider-based fallback env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) depending on configured `base_url`.
 
 ## References
 
 - AgentBeats tutorial: https://docs.agentbeats.dev/tutorial/
+- AgentBeats MLE-bench page: https://agentbeats.dev/agentbeater/mle-bench
 - A2A protocol: https://a2a-protocol.org/latest/
 - MLE-bench GitHub: https://github.com/openai/mle-bench
 - MLE-bench paper (arXiv): https://arxiv.org/abs/2410.07095
@@ -225,3 +229,4 @@ The code also supports provider-based fallback env vars (`OPENAI_API_KEY`, `ANTH
 - Monte-Carlo Graph Search talk: https://eleurent.github.io/monte-carlo-graph-search/paper/talk/talk.pdf
 - Monte-Carlo Graph Search paper: https://proceedings.mlr.press/v129/leurent20a/leurent20a.pdf
 - Monte-Carlo Graph Search supplementary: https://proceedings.mlr.press/v129/leurent20a/leurent20a-supp.pdf
+
