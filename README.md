@@ -81,6 +81,7 @@ Per-column blending:
 ## Model, Provider, and Current Parameters
 
 Current setup uses **Qwen** through **Nebius**.
+To use reasoning models like gpt-5.4 from OpenAI with the reasoning effort, you need to adjust the code and parameters accordingly. 
 
 ```yaml
 llm:
