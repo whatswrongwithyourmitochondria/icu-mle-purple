@@ -16,6 +16,8 @@ Current reported result: this implementation achieved a top benchmark score of *
 - Runtime model: panelized pass@K search + candidate review + final selection/blending
 
 ## Project Structure
+
+```text
 icu-mle-purple/
 ├─ .github/                      # CI/workflow configs
 ├─ src/                          # Runtime server + solver implementation
@@ -68,6 +70,7 @@ icu-mle-purple/
 ├─ amber-manifest.json5          # Agent manifest metadata
 ├─ uv.lock                       # Locked dependency graph
 └─ README.md                     # Project documentation
+```
 
 
 ## What Is Novel in This Implementation
