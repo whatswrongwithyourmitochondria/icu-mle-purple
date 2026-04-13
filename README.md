@@ -24,7 +24,7 @@ This agent serves A2A requests, unpacks a competition bundle, runs a tree/panel 
 - Fallback and anti-fake-success checks: detects trivial/submission-copy behavior and falls back safely when needed.
 - Diversity + final blending: seat diversity is intentional, and top clean candidates can be blended using holdout-weighted ensembling.
 
-### UCB Selection Details (verified in code)
+### UCB Selection Details
 
 In `src/mle_solver/tree/selector.py`, improve-step parent selection is branch-level UCB:
 
