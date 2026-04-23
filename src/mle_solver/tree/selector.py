@@ -9,11 +9,10 @@ A "branch" is the lineage rooted at a single draft node. At each step we:
 UCB score per branch:
     mean_reward + c * sqrt( ln(total_plays) / branch_plays )
 
-mean_reward is the best valid cv_score in the branch, normalized so the best
-branch is 1 and the worst is 0 (ties = 1). branch_plays is the number of
-improve nodes rooted in that branch so far. Early in the search every branch
-has zero plays, so exploration dominates; late in the search the bonus
-collapses and the selector exploits the best branch.
+mean_reward is the best valid holdout_score in the branch (excluding nodes
+flagged leaky with medium/high confidence), normalized so the best branch
+is 1 and the worst is 0 (ties = 1). branch_plays is the number of improve
+nodes rooted in that branch so far.
 """
 
 from __future__ import annotations
@@ -89,24 +88,11 @@ class Selector:
         maximize: bool,
     ) -> SearchNode | None:
         branches = journal.branches()
-        # Only branches that contain at least one valid node can be improved.
-        candidates: list[tuple[str, SearchNode, int, float]] = []
-        for root_id, nodes in branches.items():
-            valid = [n for n in nodes if n.is_valid and n.id not in excluded]
-            if not valid:
-                continue
-            best = max(
-                valid,
-                key=lambda n: (n.cv_score if maximize else -n.cv_score) if n.cv_score is not None else float("-inf"),
-            )
-            plays = sum(1 for n in nodes if n.stage == "improve")
-            cv = best.cv_score if best.cv_score is not None else 0.0
-            candidates.append((root_id, best, plays, cv if maximize else -cv))
-
+        candidates = self._ucb_candidates(branches, excluded, maximize, filter_leaky=True)
         if not candidates:
             return None
 
-        # Normalize cv scores to [0, 1] across branches for the exploitation term.
+        # Normalize holdout scores to [0, 1] across branches for the exploitation term.
         scores = [c[3] for c in candidates]
         lo, hi = min(scores), max(scores)
         spread = hi - lo if hi > lo else 1.0
@@ -129,3 +115,36 @@ class Selector:
             f"plays={plays} ucb={best_ucb:.3f}"
         )
         return chosen
+
+
+    @staticmethod
+    def _ucb_candidates(
+        branches: dict[str, list[SearchNode]],
+        excluded: set[str],
+        maximize: bool,
+        filter_leaky: bool,
+    ) -> list[tuple[str, SearchNode, int, float]]:
+        candidates: list[tuple[str, SearchNode, int, float]] = []
+        for root_id, nodes in branches.items():
+            valid = [
+                n for n in nodes
+                if n.is_valid
+                and n.id not in excluded
+                and (not filter_leaky or not _is_hard_leaky(n))
+            ]
+            if not valid:
+                continue
+            best = max(
+                valid,
+                key=lambda n: (n.holdout_score if maximize else -n.holdout_score) if n.holdout_score is not None else float("-inf"),
+            )
+            plays = sum(1 for n in nodes if n.stage == "improve")
+            ho = best.holdout_score if best.holdout_score is not None else 0.0
+            candidates.append((root_id, best, plays, ho if maximize else -ho))
+        return candidates
+
+
+def _is_hard_leaky(node: SearchNode) -> bool:
+    v = (node.review_verdict or "").lower()
+    c = (node.review_confidence or "").lower()
+    return v == "leaky" and c in {"medium", "high"}

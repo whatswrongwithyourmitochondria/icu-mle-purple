@@ -82,6 +82,7 @@ class TreeLoop:
         self._in_flight_parents: set[str] = set()
         self._started_at = time.time()
         self._rng = random.Random(cfg.seed)
+        self._draft_counter = 0
 
     # ── public entry ─────────────────────────────────────────────────────
 
@@ -106,41 +107,45 @@ class TreeLoop:
         n = self.cfg.search.num_drafts
         logger.info(f"[phase1] generating {n} drafts in parallel")
 
-        def _gen(idx: int) -> SearchNode | None:
-            if self._budget_exhausted():
-                return None
-            try:
-                temp = self._draft_temperature(idx)
-                code = generate_draft_code(
-                    llm=self.llm,
-                    task_desc=self.ctx.task_desc,
-                    data_files=self.ctx.data_files,
-                    data_preview=self.ctx.data_preview,
-                    contract_summary=self.ctx.contract_summary,
-                    env_summary=self.ctx.env_summary,
-                    time_remaining_s=self._remaining(),
-                    disposition=self.ctx.disposition,
-                    variant=idx,
-                    temperature=temp,
-                    label=f"draft_v{idx}",
-                )
-            except Exception as e:
-                logger.exception(f"[phase1] draft {idx} generation failed: {e}")
-                return None
-            node_id = self.journal.next_id("draft")
-            node = SearchNode(
-                id=node_id,
-                stage="draft",
-                code=code or "",
-                parent_id=None,
-                branch_root_id=node_id,
-            )
-            return node
-
         with ThreadPoolExecutor(max_workers=max(1, self.cfg.search.max_parallel)) as ex:
-            drafts = [d for d in ex.map(_gen, range(n)) if d is not None]
+            drafts = [d for d in ex.map(self._make_draft, range(n)) if d is not None]
 
         self._execute_many(drafts)
+
+    def _make_draft(self, variant: int | None = None) -> SearchNode | None:
+        if self._budget_exhausted():
+            return None
+        with self._lock:
+            idx = self._draft_counter
+            self._draft_counter += 1
+        if variant is None:
+            variant = idx
+        try:
+            temp = self._draft_temperature(variant)
+            code = generate_draft_code(
+                llm=self.llm,
+                task_desc=self.ctx.task_desc,
+                data_files=self.ctx.data_files,
+                data_preview=self.ctx.data_preview,
+                contract_summary=self.ctx.contract_summary,
+                env_summary=self.ctx.env_summary,
+                time_remaining_s=self._remaining(),
+                disposition=self.ctx.disposition,
+                variant=variant,
+                temperature=temp,
+                label=f"draft_v{variant}",
+            )
+        except Exception as e:
+            logger.exception(f"[draft] draft {variant} generation failed: {e}")
+            return None
+        node_id = self.journal.next_id("draft")
+        return SearchNode(
+            id=node_id,
+            stage="draft",
+            code=code or "",
+            parent_id=None,
+            branch_root_id=node_id,
+        )
 
     def _draft_temperature(self, variant: int) -> float | None:
         if variant < len(self.ctx.variant_temperatures):
@@ -166,10 +171,13 @@ class TreeLoop:
                     excluded=set(self._in_flight_parents),
                     maximize=self.ctx.maximize,
                 )
-                if action is None:
-                    return False
-                self._in_flight_parents.add(action.parent.id)
-            fut = executor.submit(self._step_worker, action.kind, action.parent)
+            if action is not None:
+                with self._lock:
+                    self._in_flight_parents.add(action.parent.id)
+                fut = executor.submit(self._step_worker, action.kind, action.parent)
+            else:
+                logger.info("[phase2] no clean branches — spawning fresh draft")
+                fut = executor.submit(self._draft_worker)
             in_flight.add(fut)
             return True
 
@@ -203,6 +211,11 @@ class TreeLoop:
         finally:
             with self._lock:
                 self._in_flight_parents.discard(parent.id)
+
+    def _draft_worker(self) -> None:
+        draft = self._make_draft()
+        if draft is not None:
+            self._execute_and_record(draft)
 
     def _make_improve(self, parent: SearchNode) -> SearchNode | None:
         if self._budget_exhausted():
@@ -331,6 +344,23 @@ class TreeLoop:
                 node.notes = "parser flagged as missing scores"
             self.journal.add(node)
             return
+
+        verdict: ReviewVerdict = review_candidate(
+            llm=self.llm,
+            code=node.code,
+            task_desc=self.ctx.task_desc,
+            contract_summary=self.ctx.contract_summary,
+            cv_score=node.cv_score,
+            holdout_score=node.holdout_score,
+            label=f"review<-{node.id}",
+        )
+        node.review_verdict = verdict.verdict
+        node.review_confidence = verdict.confidence
+        node.review_reasons = list(verdict.reasons)
+        if verdict.verdict in {"suspicious", "leaky"}:
+            node.is_suspicious = True
+            node.suspicion_reasons.extend(verdict.reasons)
+        logger.info(f"[review] {node.id} verdict={verdict.verdict} confidence={verdict.confidence}")
 
         self.journal.add(node)
 

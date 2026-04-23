@@ -106,9 +106,11 @@ def test_pick_hint_cold_start_returns_untried_indices_first():
     # Add one improve node for hint 0. Next call should skip to hint 1.
     parent = SearchNode(id="d001", stage="draft", code="x", branch_root_id="d001")
     parent.cv_score = 0.5
+    parent.holdout_score = 0.5
     parent.maximize = True
     child = SearchNode(id="i002", stage="improve", code="x", parent_id="d001", branch_root_id="d001")
     child.cv_score = 0.6
+    child.holdout_score = 0.6
     child.maximize = True
     child.improve_hint_index = 0
     j._nodes = [parent, child]

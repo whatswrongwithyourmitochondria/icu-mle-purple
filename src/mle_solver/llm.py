@@ -133,4 +133,9 @@ class LLMClient:
             if blocks:
                 substantive = [b for b in blocks if len(b.strip()) >= 30]
                 return max(substantive or blocks, key=len).strip()
+        stripped = text.strip()
+        if "```" not in stripped:
+            logger.warning(f"[llm] no code fences — using full response as code ({len(stripped)} chars)")
+            return stripped
+        logger.warning(f"[llm] code extraction failed ({len(text)} chars, starts with: {text[:200]!r})")
         return ""

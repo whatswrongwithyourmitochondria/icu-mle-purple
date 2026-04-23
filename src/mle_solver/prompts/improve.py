@@ -50,11 +50,11 @@ def pick_hint(journal: "Journal", *, rng: random.Random | None = None) -> int:
         if not (0 <= idx < n):
             continue
         parent = journal.parent_of(node)
-        if parent is None or parent.cv_score is None or node.cv_score is None:
+        if parent is None or parent.holdout_score is None or node.holdout_score is None:
             continue
         stats[idx][1] += 1
         maximize = parent.maximize if parent.maximize is not None else True
-        won = node.cv_score > parent.cv_score if maximize else node.cv_score < parent.cv_score
+        won = node.holdout_score > parent.holdout_score if maximize else node.holdout_score < parent.holdout_score
         if won:
             stats[idx][0] += 1
 
@@ -113,6 +113,9 @@ def build_improve_prompt(
 
         Make one targeted change. Keep loading ./input/_splits.csv and following it.
         Print OUTCOME_JSON at the end.
+        After modifying feature engineering or preprocessing, verify every column
+        reference in the rest of the script still resolves — do not use columns
+        that were dropped, renamed, or consumed by encoding.
         """
     ).strip()
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]

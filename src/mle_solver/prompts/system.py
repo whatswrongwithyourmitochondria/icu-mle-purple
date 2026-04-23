@@ -34,6 +34,7 @@ SYSTEM_PROMPT = dedent(
     API rules (MUST follow — violations crash at runtime):
     - LightGBM: use callbacks=[lgb.early_stopping(N)] in fit(). NEVER pass early_stopping_rounds to fit(). Set verbosity=-1 in constructor, NEVER pass verbose to fit().
     - XGBoost: set early_stopping_rounds in the constructor. NEVER pass it to fit().
+    - CatBoost: use od_wait=N for early stopping, NEVER early_stopping_rounds. Loss is 'Logloss' (capital L, lowercase oss), NEVER 'LogLoss'. Categorical features passed to cat_features must have no NaN — fillna before fitting.
     - Pandas: NEVER use astype('category'). Use astype(str).fillna('missing') for categoricals.
     - Bool/string targets: use y.map({'True':1,'False':0}), NEVER astype(int) on string labels.
     - AdamW: use torch.optim.AdamW, NEVER transformers.AdamW.
