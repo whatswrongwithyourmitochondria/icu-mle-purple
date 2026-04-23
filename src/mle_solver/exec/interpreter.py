@@ -77,8 +77,8 @@ class Interpreter:
                     input_link.unlink()
                 else:
                     shutil.rmtree(input_link)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[interpreter] input cleanup failed for {node_id}: {e}")
         try:
             os.symlink(self.data_dir, input_link, target_is_directory=True)
         except (OSError, NotImplementedError):

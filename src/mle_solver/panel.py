@@ -232,8 +232,8 @@ def _merge_candidates(seats: list[SeatResult], *, cfg: Config) -> list[SearchNod
                 if raw in seen:
                     continue
                 seen.add(raw)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[panel] dedup read failed for {node.id}: {e}")
         final.append(node)
         if len(final) >= cfg.search.final_top_k * max(1, cfg.search.pass_k):
             break

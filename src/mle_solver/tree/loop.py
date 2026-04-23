@@ -404,81 +404,6 @@ class TreeLoop:
             reverse=True,
         )
         top_k = ranked[: self.cfg.search.final_top_k]
-        top_scored_id = top_k[0].id if top_k else ""
-
-        # Reviewer agent runs once per top-K candidate. Verdict feeds into
-        # the final rerank: clean > suspicious > leaky.
-        for node in top_k:
-            if node.review_verdict:
-                continue
-            verdict: ReviewVerdict = review_candidate(
-                llm=self.llm,
-                code=node.code,
-                task_desc=self.ctx.task_desc,
-                contract_summary=self.ctx.contract_summary,
-                cv_score=node.cv_score,
-                holdout_score=node.holdout_score,
-                label=f"review<-{node.id}",
-            )
-            if (
-                node.id == top_scored_id
-                and verdict.verdict == "suspicious"
-                and verdict.confidence in {"medium", "high"}
-            ):
-                first_verdict = verdict.verdict
-                first_confidence = verdict.confidence
-                second = review_candidate(
-                    llm=self.llm,
-                    code=node.code,
-                    task_desc=self.ctx.task_desc,
-                    contract_summary=self.ctx.contract_summary,
-                    cv_score=node.cv_score,
-                    holdout_score=node.holdout_score,
-                    label=f"review2<-{node.id}",
-                    temperature=0.0,
-                )
-                agreement = second.verdict in {"suspicious", "leaky"}
-                if agreement:
-                    merged_verdict = (
-                        "leaky" if "leaky" in {verdict.verdict, second.verdict} else "suspicious"
-                    )
-                    merged_conf = _max_confidence(verdict.confidence, second.confidence)
-                    merged_reasons = _merge_unique(verdict.reasons + second.reasons)
-                    verdict = ReviewVerdict(
-                        verdict=merged_verdict,
-                        confidence=merged_conf,
-                        reasons=merged_reasons,
-                        summary=verdict.summary or second.summary,
-                    )
-                    logger.info(
-                        f"[review] {node.id} consensus=agree "
-                        f"first={first_verdict}/{first_confidence} "
-                        f"second={second.verdict}/{second.confidence}"
-                    )
-                else:
-                    verdict = ReviewVerdict(
-                        verdict="suspicious",
-                        confidence="low",
-                        reasons=_merge_unique(
-                            verdict.reasons
-                            + second.reasons
-                            + ["second reviewer disagreed with suspicion"]
-                        ),
-                        summary=verdict.summary,
-                    )
-                    logger.info(
-                        f"[review] {node.id} consensus=disagree "
-                        f"first={first_verdict}/{first_confidence} "
-                        f"second={second.verdict}/{second.confidence}"
-                    )
-
-            node.review_verdict = verdict.verdict
-            node.review_confidence = verdict.confidence
-            node.review_reasons = list(verdict.reasons)
-            if verdict.verdict in {"suspicious", "leaky"}:
-                node.is_suspicious = True
-                node.suspicion_reasons.extend(verdict.reasons)
-            logger.info(f"[review] {node.id} verdict={verdict.verdict} confidence={verdict.confidence}")
 
         def final_key(n: SearchNode) -> tuple:
             hard_bad = hard_leakage_flag(n.review_verdict, n.review_confidence)
@@ -518,23 +443,3 @@ class TreeLoop:
         return self._remaining() <= self.cfg.search.grace_seconds
 
 
-def _max_confidence(a: str, b: str) -> str:
-    order = {"low": 0, "medium": 1, "high": 2}
-    ia = order.get((a or "").lower(), 0)
-    ib = order.get((b or "").lower(), 0)
-    return "high" if max(ia, ib) >= 2 else ("medium" if max(ia, ib) >= 1 else "low")
-
-
-def _merge_unique(items: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in items:
-        s = str(raw).strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(s)
-    return out[:6]
