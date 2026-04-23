@@ -16,6 +16,7 @@ def fix_common_errors(code: str) -> str:
     code = _fix_bool_map_nan(code)
     code = _fix_catboost_logloss(code)
     code = _fix_catboost_early_stopping_conflict(code)
+    code = _fix_catboost_od_wait_no_eval(code)
     return code
 
 
@@ -112,6 +113,19 @@ def _fix_catboost_early_stopping_conflict(code: str) -> str:
                 "",
                 code,
             )
+    return code
+
+
+def _fix_catboost_od_wait_no_eval(code: str) -> str:
+    """Remove od_wait from CatBoost constructor when .fit() has no eval_set.
+
+    CatBoost requires eval_set in .fit() when od_wait is set. If eval_set
+    is not present, od_wait causes a crash. Safer to train without early
+    stopping than to crash.
+    """
+    if "od_wait" in code and ("CatBoost" in code or "catboost" in code):
+        if "eval_set" not in code:
+            code = re.sub(r",?\s*od_wait\s*=\s*\d+", "", code)
     return code
 
 
