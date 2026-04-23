@@ -57,13 +57,9 @@ def infer_contract(
     """Use a single LLM call to infer the task contract from competition files."""
     contract = TaskContract(n_folds=n_folds, holdout_fraction=holdout_fraction, seed=seed)
 
-    desc = _read_file(data_dir, "description.md", "description.txt", "README.md")
+    desc = (data_dir / "description.md").read_text(encoding="utf-8")
     sample_header = _read_first_line(data_dir / "sample_submission.csv")
     train_header = _read_first_line(data_dir / "train.csv") or _read_first_line(data_dir / "training.csv")
-
-    if not desc and not sample_header:
-        logger.warning("[contract] no description or sample_submission found")
-        return contract
 
     user_msg = f"Competition description:\n{desc}\n\n"
     if sample_header:
@@ -109,13 +105,6 @@ def _parse_json(text: str) -> dict | None:
     except json.JSONDecodeError:
         return None
 
-
-def _read_file(data_dir: Path, *names: str) -> str:
-    for name in names:
-        path = data_dir / name
-        if path.exists():
-            return path.read_text(encoding="utf-8", errors="replace")
-    return ""
 
 
 def _read_first_line(path: Path) -> str:

@@ -6,7 +6,7 @@ import io
 import logging
 import shutil
 import tarfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from uuid import uuid4
 
 from a2a.server.tasks import TaskUpdater
@@ -36,7 +36,7 @@ class Agent:
             raise ValueError("Missing competition.tar.gz payload")
 
         work_dir = await self._prepare_work_dir()
-        _safe_extract_tar(tar_bytes, work_dir)
+        _extract_tar(tar_bytes, work_dir)
         logger.info(f"Extracted competition data to: {work_dir}")
 
         await updater.update_status(
@@ -94,18 +94,7 @@ class Agent:
             return self.work_dir
 
 
-def _safe_extract_tar(tar_bytes: bytes, destination: Path) -> None:
-    destination = destination.resolve()
+def _extract_tar(tar_bytes: bytes, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:gz") as tar:
-        members = tar.getmembers()
-        for member in members:
-            member_path = PurePosixPath(member.name)
-            if member_path.is_absolute() or ".." in member_path.parts:
-                raise ValueError(f"Unsafe tar member path: {member.name}")
-            if member.issym() or member.islnk():
-                raise ValueError(f"Tar links are not allowed: {member.name}")
-            resolved_target = (destination / Path(*member_path.parts)).resolve()
-            if destination != resolved_target and destination not in resolved_target.parents:
-                raise ValueError(f"Tar member escapes destination: {member.name}")
-        tar.extractall(destination, members=members)
+        tar.extractall(destination)

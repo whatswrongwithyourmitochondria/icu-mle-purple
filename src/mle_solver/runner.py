@@ -24,7 +24,7 @@ logger = logging.getLogger("mle-solver")
 _CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "mle-solver.yaml"
 
 
-def run_competition(work_dir: Path) -> bytes | None:
+def run_competition(work_dir: Path) -> bytes:
     """Run the full panel against a competition workspace.
 
     ``work_dir`` must contain ``home/data/`` with ``description.md``,
@@ -40,12 +40,9 @@ def run_competition(work_dir: Path) -> bytes | None:
 
     cfg_errs = cfg.validate()
     if cfg_errs:
-        for e in cfg_errs:
-            logger.error(f"[runner] config invalid: {e}")
-        return _emergency_fallback(data_dir)
+        raise RuntimeError(f"[runner] config invalid: {'; '.join(cfg_errs)}")
     if not data_dir.exists():
-        logger.error(f"[runner] data dir missing: {data_dir}")
-        return None
+        raise FileNotFoundError(f"[runner] data dir missing: {data_dir}")
 
     # ── Runner-owned protocol ─────────────────────────────────────────────
     llm = LLMClient(cfg.llm)
@@ -68,8 +65,6 @@ def run_competition(work_dir: Path) -> bytes | None:
     env_summary = _env_summary()
     direction_label = "higher is better" if contract.maximize else "lower is better"
     sample_submission_path = data_dir / "sample_submission.csv"
-    if not sample_submission_path.exists():
-        sample_submission_path = None  # type: ignore[assignment]
 
     def build_context(seat_cfg: Config, seat_index: int) -> RunContext:
         return RunContext(
@@ -92,8 +87,7 @@ def run_competition(work_dir: Path) -> bytes | None:
     )
 
     if not result.final_candidates:
-        logger.warning("[runner] panel produced no candidates; returning sample submission")
-        return _emergency_fallback(data_dir)
+        raise RuntimeError("[runner] panel produced no candidates")
 
     # Try blending only clean/non-leaky candidates
     candidates = result.final_candidates
@@ -112,8 +106,7 @@ def run_competition(work_dir: Path) -> bytes | None:
     best = candidates[0]
     sub_path = best.submission_path
     if sub_path is None or not sub_path.exists():
-        logger.warning("[runner] best candidate has no submission file; falling back")
-        return _emergency_fallback(data_dir)
+        raise RuntimeError(f"[runner] best candidate has no submission file: {sub_path}")
     logger.info(f"[runner] shipping best: {best.short()}")
     return sub_path.read_bytes()
 
@@ -156,14 +149,7 @@ def _render_contract_summary(contract, splits) -> str:
 
 
 def _read_description(data_dir: Path) -> str:
-    for name in ("description.md", "description.txt", "README.md"):
-        p = data_dir / name
-        if p.exists():
-            try:
-                return p.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                pass
-    return "Solve the ML competition in ./input/."
+    return (data_dir / "description.md").read_text(encoding="utf-8")
 
 
 def _list_data_files(data_dir: Path) -> list[str]:
@@ -176,40 +162,20 @@ def _list_data_files(data_dir: Path) -> list[str]:
 
 
 def _build_data_preview(data_dir: Path, max_chars: int = 2000) -> str:
-    """First few rows of each CSV, small and cheap."""
-    try:
-        import pandas as pd
-    except ImportError:
-        return ""
+    import pandas as pd
     parts: list[str] = []
     for csv in sorted(data_dir.glob("*.csv")):
         if csv.name.startswith("_"):
             continue
-        try:
-            df = pd.read_csv(csv, nrows=3)
-            parts.append(f"# {csv.name}\n{df.to_string()}")
-        except Exception:
-            continue
+        df = pd.read_csv(csv, nrows=3)
+        parts.append(f"# {csv.name}\n{df.to_string()}")
         if sum(len(p) for p in parts) > max_chars:
             break
-    combined = "\n\n".join(parts)
-    return combined[:max_chars]
+    return "\n\n".join(parts)[:max_chars]
 
 
 def _env_summary() -> str:
-    try:
-        import platform
-        return f"- Python {platform.python_version()} on {platform.system()}"
-    except Exception:
-        return ""
+    import platform
+    return f"- Python {platform.python_version()} on {platform.system()}"
 
 
-def _emergency_fallback(data_dir: Path) -> bytes | None:
-    sample = data_dir / "sample_submission.csv"
-    if sample.exists():
-        logger.warning(f"[runner] EMERGENCY FALLBACK: returning {sample.name}")
-        try:
-            return sample.read_bytes()
-        except Exception:
-            return None
-    return None
