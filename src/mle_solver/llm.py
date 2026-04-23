@@ -84,20 +84,14 @@ class LLMClient:
                     self._omit_temperature = True
                     continue
                 last_err = e
-                wait = min(10 * 2 ** attempt, 60)
-                logger.warning(
-                    f"[llm] {label} attempt {attempt+1}/{self.cfg.max_retries} "
-                    f"failed: {type(e).__name__}: {e} — sleeping {wait}s"
-                )
-                time.sleep(wait)
             except RuntimeError as e:
                 last_err = e
-                wait = min(10 * 2 ** attempt, 60)
-                logger.warning(
-                    f"[llm] {label} attempt {attempt+1}/{self.cfg.max_retries} "
-                    f"RuntimeError: {e} — sleeping {wait}s"
-                )
-                time.sleep(wait)
+            wait = min(10 * 2 ** attempt, 60)
+            logger.warning(
+                f"[llm] {label} attempt {attempt+1}/{self.cfg.max_retries} "
+                f"failed: {type(last_err).__name__}: {last_err} — sleeping {wait}s"
+            )
+            time.sleep(wait)
 
         raise RuntimeError(
             f"[llm] {label} failed after {self.cfg.max_retries} attempts "
