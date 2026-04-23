@@ -94,7 +94,7 @@ def review_candidate(
         )
     except Exception as e:
         logger.warning(f"[reviewer] failed: {e}")
-        return ReviewVerdict(verdict="clean", confidence="low", summary=f"reviewer failed: {e}")
+        return ReviewVerdict(verdict="suspicious", confidence="low", summary=f"reviewer failed: {e}")
 
     text = response.strip()
     if text.startswith("```"):
@@ -104,13 +104,13 @@ def review_candidate(
     try:
         payload = json.loads(text)
     except Exception:
-        return ReviewVerdict(verdict="clean", confidence="low", summary="reviewer returned non-json")
+        return ReviewVerdict(verdict="suspicious", confidence="low", summary="reviewer returned non-json")
     if not isinstance(payload, dict):
-        return ReviewVerdict(verdict="clean", confidence="low", summary="reviewer returned non-object")
+        return ReviewVerdict(verdict="suspicious", confidence="low", summary="reviewer returned non-object")
 
-    verdict = str(payload.get("verdict", "clean")).lower()
+    verdict = str(payload.get("verdict", "suspicious")).lower()
     if verdict not in {"clean", "suspicious", "leaky"}:
-        verdict = "clean"
+        verdict = "suspicious"
     confidence = str(payload.get("confidence", "low")).lower()
     if confidence not in {"low", "medium", "high"}:
         confidence = "low"

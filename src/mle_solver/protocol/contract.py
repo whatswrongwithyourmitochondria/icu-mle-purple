@@ -74,8 +74,10 @@ def infer_contract(
     )
     parsed = _parse_json(response)
     if parsed is None:
-        logger.warning("[contract] failed to parse LLM response as JSON")
-        return contract
+        raise RuntimeError(
+            f"[contract] LLM response is not valid JSON — cannot infer task contract. "
+            f"Response was: {response[:300]!r}"
+        )
 
     contract.metric = str(parsed.get("metric", "unknown")).strip().lower()
     contract.maximize = bool(parsed.get("maximize", True))

@@ -48,7 +48,7 @@ def test_reviewer_parses_leaky_verdict_with_reasons():
     assert "fits StandardScaler on holdout rows" in verdict.reasons
 
 
-def test_reviewer_handles_malformed_response_as_clean_low_confidence():
+def test_reviewer_handles_malformed_response_as_suspicious():
     llm = StubLLM("??? not json")
     verdict = review_candidate(
         llm=llm,
@@ -59,5 +59,5 @@ def test_reviewer_handles_malformed_response_as_clean_low_confidence():
         holdout_score=None,
         label="review-test",
     )
-    assert verdict.verdict == "clean"
+    assert verdict.verdict == "suspicious"
     assert verdict.confidence == "low"

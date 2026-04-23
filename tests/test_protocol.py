@@ -1,15 +1,17 @@
 """Tests for the runner-owned split protocol."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from mle_solver.protocol import (
     PROTOCOL_JSON,
     SPLIT_CSV,
     prepare_splits,
 )
-from mle_solver.protocol.contract import TaskContract
+from mle_solver.protocol.contract import TaskContract, infer_contract
 
 
 def _write_basic_competition(data_dir: Path, n: int = 40) -> None:
@@ -54,3 +56,23 @@ def test_prepare_splits_is_stratified_for_classification(tmp_path: Path):
     dev = merged[merged["split"] == "dev"]
     counts = dev.groupby("fold")["target"].value_counts().unstack(fill_value=0)
     assert (counts > 0).all().all()
+
+
+def test_infer_contract_raises_on_unparseable_json(tmp_path: Path):
+    (tmp_path / "description.md").write_text("Some competition", encoding="utf-8")
+    (tmp_path / "sample_submission.csv").write_text("id,target\n1,0\n", encoding="utf-8")
+    llm = MagicMock()
+    llm.chat.return_value = "this is not json at all"
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        infer_contract(tmp_path, llm=llm, n_folds=5, holdout_fraction=0.2, seed=42)
+
+
+def test_infer_contract_succeeds_with_valid_json(tmp_path: Path):
+    (tmp_path / "description.md").write_text("Binary classification. Metric: AUC.", encoding="utf-8")
+    (tmp_path / "sample_submission.csv").write_text("id,target\n1,0\n", encoding="utf-8")
+    llm = MagicMock()
+    llm.chat.return_value = '{"metric": "auc", "maximize": true, "target_col": "target", "id_col": "id", "category": "tabular"}'
+    contract = infer_contract(tmp_path, llm=llm, n_folds=5, holdout_fraction=0.2, seed=42)
+    assert contract.metric == "auc"
+    assert contract.maximize is True
+    assert contract.target_col == "target"
