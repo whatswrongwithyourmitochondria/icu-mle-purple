@@ -118,8 +118,12 @@ class TreeLoop:
         with self._lock:
             idx = self._draft_counter
             self._draft_counter += 1
+        is_dynamic = variant is None
         if variant is None:
             variant = idx
+        disposition = self.ctx.disposition
+        if is_dynamic:
+            disposition = self._diversity_disposition(disposition)
         try:
             temp = self._draft_temperature(variant)
             code = generate_draft_code(
@@ -130,7 +134,7 @@ class TreeLoop:
                 contract_summary=self.ctx.contract_summary,
                 env_summary=self.ctx.env_summary,
                 time_remaining_s=self._remaining(),
-                disposition=self.ctx.disposition,
+                disposition=disposition,
                 variant=variant,
                 temperature=temp,
                 label=f"draft_v{variant}",
@@ -146,6 +150,21 @@ class TreeLoop:
             parent_id=None,
             branch_root_id=node_id,
         )
+
+    def _diversity_disposition(self, base_disposition: str) -> str:
+        from ..prompts.improve import detect_model_family
+        from collections import Counter
+        families = [
+            detect_model_family(n.code)
+            for n in self.journal
+            if n.is_valid and n.code
+        ]
+        if not families:
+            return base_disposition
+        dominant = Counter(families).most_common(1)[0][0]
+        if dominant == "unknown":
+            return base_disposition
+        return f"{base_disposition}\nExisting solutions all use {dominant}. Use a completely different model family."
 
     def _draft_temperature(self, variant: int) -> float | None:
         if variant < len(self.ctx.variant_temperatures):

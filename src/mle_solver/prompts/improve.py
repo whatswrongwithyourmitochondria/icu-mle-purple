@@ -14,7 +14,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 IMPROVE_HINTS: tuple[tuple[str, str], ...] = (
     ("feature_engineering", "feature engineering — interactions, aggregates, domain-specific transforms"),
-    ("model_swap",          "model swap — try a different family (or a stronger config of the same one)"),
+    ("model_swap",          "model swap — switch to a completely different model family than the current code uses"),
     ("hyperparameters",     "hyperparameters — learning rate, depth, regularization, early stopping"),
     ("preprocessing",       "preprocessing — missing values, encoding, scaling, dtype cleanup"),
     ("validation",          "validation — inspect CV fold structure; check for leakage through groups/time"),
@@ -32,15 +32,55 @@ def hint_text(index: int) -> str:
     return IMPROVE_HINTS[index % len(IMPROVE_HINTS)][1]
 
 
+_MODEL_SWAP_INDEX = 1
+
+_MODEL_PATTERNS: tuple[tuple[str, ...], ...] = (
+    ("lightgbm", "lgb."),
+    ("catboost",),
+    ("xgboost", "xgb."),
+    ("torch", "nn.Module", "nn.Linear"),
+    ("sklearn",),
+)
+
+
+def detect_model_family(code: str) -> str:
+    code_lower = code.lower()
+    for patterns in _MODEL_PATTERNS:
+        if any(p.lower() in code_lower for p in patterns):
+            return patterns[0]
+    return "unknown"
+
+
+def _is_converged(journal: "Journal", threshold: float = 0.7) -> bool:
+    """Check if >threshold of valid nodes use the same model family."""
+    from collections import Counter
+    families = [
+        detect_model_family(n.code)
+        for n in journal
+        if n.is_valid and n.code
+    ]
+    if len(families) < 3:
+        return False
+    counts = Counter(families)
+    most_common_count = counts.most_common(1)[0][1]
+    return most_common_count / len(families) > threshold
+
+
 def pick_hint(journal: "Journal", *, rng: random.Random | None = None) -> int:
-    """Epsilon-greedy over smoothed win rates.
+    """Epsilon-greedy over smoothed win rates, with diversity override.
 
     Phase 1 (cold start): cycle every hint at least once.
     Phase 2: 30% random, 70% argmax of (wins + 1) / (attempts + 2) across hints,
     with random tie-breaking.
+    Diversity override: when >70% of valid nodes use the same model family,
+    return model_swap with 50% probability.
     """
     rng = rng or random
     n = len(IMPROVE_HINTS)
+
+    if _is_converged(journal) and rng.random() < 0.5:
+        return _MODEL_SWAP_INDEX
+
     stats: list[list[int]] = [[0, 0] for _ in range(n)]
 
     for node in journal:
