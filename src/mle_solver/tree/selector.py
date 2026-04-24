@@ -33,6 +33,10 @@ class NextAction:
     parent: SearchNode
 
 
+MAX_IMPROVE_ATTEMPTS_PER_NODE = 10
+MAX_DEBUG_CHAIN_DEPTH = 5
+
+
 class Selector:
     def __init__(self, *, max_debug_attempts_per_node: int, explore_c: float = 1.0):
         self.max_debug_attempts = int(max_debug_attempts_per_node)
@@ -67,7 +71,8 @@ class Selector:
                 continue
             root = node.branch_root_id or node.id
             if self._branch_has_valid(journal, root):
-                # Once a branch has a valid candidate, chase improvement not repair.
+                continue
+            if self._branch_debug_count(journal, root) >= MAX_DEBUG_CHAIN_DEPTH:
                 continue
             return node
         return None
@@ -77,6 +82,10 @@ class Selector:
         for n in journal:
             if (n.branch_root_id or n.id) == root and n.is_valid:
                 return True
+
+    @staticmethod
+    def _branch_debug_count(journal: Journal, root: str) -> int:
+        return sum(1 for n in journal if (n.branch_root_id or n.id) == root and n.stage == "debug")
         return False
 
     # ── improve (UCB) ────────────────────────────────────────────────────
@@ -124,6 +133,13 @@ class Selector:
         maximize: bool,
         filter_leaky: bool,
     ) -> list[tuple[str, SearchNode, int, float]]:
+        # Count how many times each node has been an improve parent.
+        improve_parent_counts: dict[str, int] = {}
+        for nodes in branches.values():
+            for n in nodes:
+                if n.stage == "improve" and n.parent_id:
+                    improve_parent_counts[n.parent_id] = improve_parent_counts.get(n.parent_id, 0) + 1
+
         candidates: list[tuple[str, SearchNode, int, float]] = []
         for root_id, nodes in branches.items():
             valid = [
@@ -131,6 +147,7 @@ class Selector:
                 if n.is_valid
                 and n.id not in excluded
                 and (not filter_leaky or not _is_hard_leaky(n))
+                and improve_parent_counts.get(n.id, 0) < MAX_IMPROVE_ATTEMPTS_PER_NODE
             ]
             if not valid:
                 continue

@@ -36,7 +36,7 @@ SYSTEM_PROMPT = dedent(
     - XGBoost: set early_stopping_rounds in the constructor. NEVER pass it to fit().
     - CatBoost: use od_wait=N for early stopping, NEVER early_stopping_rounds. od_wait REQUIRES passing eval_set to .fit() — without eval_set, remove od_wait entirely. Loss is 'Logloss' (capital L, lowercase oss), NEVER 'LogLoss'. Categorical features passed to cat_features must have no NaN — fillna before fitting.
     - Pandas: NEVER use astype('category'). For LightGBM/XGBoost: LabelEncoder categorical columns to integers. For CatBoost: use astype(str).fillna('missing') — CatBoost handles strings natively. Always fillna before encoding.
-    - Bool/string targets: use y.map({'True':1,'False':0}), NEVER astype(int) on string labels.
+    - Bool/string targets: use y.map({'True':1,'False':0}), NEVER astype(int) on string labels. Always dropna on the target column before training — NaN targets crash all models.
     - AdamW: use torch.optim.AdamW, NEVER transformers.AdamW.
     - Drop ID columns and the target column from features before fitting.
     - Use predict_proba() not predict() for probability-based metrics (AUC, logloss).
