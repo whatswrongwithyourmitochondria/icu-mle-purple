@@ -35,6 +35,7 @@ class NextAction:
 
 MAX_IMPROVE_ATTEMPTS_PER_NODE = 10
 MAX_DEBUG_CHAIN_DEPTH = 5
+BRANCH_STAGNATION_LIMIT = 15
 
 
 class Selector:
@@ -156,7 +157,31 @@ class Selector:
                 key=lambda n: (n.holdout_score if maximize else -n.holdout_score) if n.holdout_score is not None else float("-inf"),
             )
             plays = sum(1 for n in nodes if n.stage == "improve")
+            if _is_stagnant(nodes, best, plays, maximize):
+                continue
             ho = best.holdout_score if best.holdout_score is not None else 0.0
             candidates.append((root_id, best, plays, ho if maximize else -ho))
         return candidates
+
+
+def _is_stagnant(
+    nodes: list[SearchNode], best: SearchNode, plays: int, maximize: bool,
+) -> bool:
+    if plays < BRANCH_STAGNATION_LIMIT:
+        return False
+    best_ho = best.holdout_score
+    if best_ho is None:
+        return False
+    improve_nodes = sorted(
+        [n for n in nodes if n.stage == "improve" and n.is_valid],
+        key=lambda n: n.created_at,
+    )
+    recent = improve_nodes[-BRANCH_STAGNATION_LIMIT:]
+    for n in recent:
+        ho = n.holdout_score
+        if ho is not None:
+            better = ho > best_ho if maximize else ho < best_ho
+            if better:
+                return False
+    return True
 
