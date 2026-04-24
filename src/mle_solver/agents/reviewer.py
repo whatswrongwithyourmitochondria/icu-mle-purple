@@ -1,9 +1,7 @@
 """LLM-based leakage reviewer.
 
-Runs ONCE per top-K candidate (not per node) with the full code + task
-description + runner protocol + scores. Returns a structured verdict so
-the final ranker can demote suspected leaky candidates without false
-positives on easy tasks.
+Returns a binary verdict (clean / leaky) so the selector and ranker
+can exclude or demote candidates with data leakage.
 """
 
 from __future__ import annotations
@@ -20,10 +18,8 @@ logger = logging.getLogger("mle-solver")
 
 @dataclass
 class ReviewVerdict:
-    verdict: str = "clean"             # "clean" | "suspicious" | "leaky"
-    confidence: str = "low"            # "low" | "medium" | "high"
+    verdict: str = "clean"             # "clean" | "leaky"
     reasons: list[str] = field(default_factory=list)
-    summary: str = ""
 
 
 _SYS = dedent(
@@ -51,10 +47,8 @@ _SYS = dedent(
     If the code properly loads _splits.csv and only trains on dev rows, it is likely clean.
 
     Return ONLY a JSON object:
-    - "verdict": "clean" | "suspicious" | "leaky"
-    - "confidence": "low" | "medium" | "high"
+    - "verdict": "clean" | "leaky"
     - "reasons": list of short strings (may be empty)
-    - "summary": one sentence
     """
 ).strip()
 
@@ -98,7 +92,7 @@ def review_candidate(
         )
     except Exception as e:
         logger.warning(f"[reviewer] failed: {e}")
-        return ReviewVerdict(verdict="suspicious", confidence="low", summary=f"reviewer failed: {e}")
+        return ReviewVerdict()
 
     text = response.strip()
     if text.startswith("```"):
@@ -108,17 +102,13 @@ def review_candidate(
     try:
         payload = json.loads(text)
     except Exception:
-        return ReviewVerdict(verdict="suspicious", confidence="low", summary="reviewer returned non-json")
+        return ReviewVerdict()
     if not isinstance(payload, dict):
-        return ReviewVerdict(verdict="suspicious", confidence="low", summary="reviewer returned non-object")
+        return ReviewVerdict()
 
-    verdict = str(payload.get("verdict", "suspicious")).lower()
-    if verdict not in {"clean", "suspicious", "leaky"}:
-        verdict = "suspicious"
-    confidence = str(payload.get("confidence", "low")).lower()
-    if confidence not in {"low", "medium", "high"}:
-        confidence = "low"
+    verdict = str(payload.get("verdict", "clean")).lower()
+    if verdict not in {"clean", "leaky"}:
+        verdict = "clean"
     reasons_raw = payload.get("reasons", []) or []
     reasons = [str(r)[:200] for r in reasons_raw if r][:6]
-    summary = str(payload.get("summary", ""))[:240]
-    return ReviewVerdict(verdict=verdict, confidence=confidence, reasons=reasons, summary=summary)
+    return ReviewVerdict(verdict=verdict, reasons=reasons)

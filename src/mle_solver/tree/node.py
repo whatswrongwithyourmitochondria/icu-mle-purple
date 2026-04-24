@@ -28,10 +28,7 @@ class SearchNode:
 
     # Flags set during post-execution inspection.
     is_buggy: bool = False
-    is_suspicious: bool = False
-    suspicion_reasons: list[str] = field(default_factory=list)
-    review_verdict: str = ""            # "clean" | "suspicious" | "leaky" | ""
-    review_confidence: str = ""         # "low" | "medium" | "high" | ""
+    review_verdict: str = ""            # "clean" | "leaky" | ""
     review_reasons: list[str] = field(default_factory=list)
     debug_attempts: int = 0
 
@@ -59,7 +56,6 @@ class SearchNode:
         flag = ""
         if self.is_buggy:
             flag = " [BUGGY]"
-        elif self.is_suspicious or self.review_verdict in {"suspicious", "leaky"}:
-            conf = f"/{self.review_confidence}" if self.review_confidence else ""
-            flag = f" [{self.review_verdict or 'SUSPECT'}{conf}]"
+        elif self.review_verdict == "leaky":
+            flag = " [LEAKY]"
         return f"{self.id}({self.stage} cv={cv} hold={ho}{flag})"

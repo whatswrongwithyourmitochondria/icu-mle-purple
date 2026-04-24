@@ -27,7 +27,6 @@ from .llm import LLMClient
 from .prompts import disposition_for_run
 from .tree import SearchNode, TreeLoop
 from .tree.loop import RunContext, RunReport
-from .tree.ranking import adjusted_review_penalty, hard_leakage_flag
 
 logger = logging.getLogger("mle-solver")
 
@@ -209,11 +208,9 @@ def _merge_candidates(seats: list[SeatResult], *, cfg: Config) -> list[SearchNod
         return v if maximize else -v
 
     def final_key(n: SearchNode) -> tuple:
-        hard_bad = hard_leakage_flag(n.review_verdict, n.review_confidence)
-        penalty = adjusted_review_penalty(n, all_candidates, maximize=maximize)
+        leaky = 1 if n.review_verdict == "leaky" else 0
         return (
-            -hard_bad,
-            -penalty,
+            -leaky,
             score_key(n.holdout_score),
             score_key(n.cv_score),
             n.created_at,

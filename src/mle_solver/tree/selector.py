@@ -146,7 +146,7 @@ class Selector:
                 n for n in nodes
                 if n.is_valid
                 and n.id not in excluded
-                and (not filter_leaky or not _is_hard_leaky(n))
+                and (not filter_leaky or n.review_verdict != "leaky")
                 and improve_parent_counts.get(n.id, 0) < MAX_IMPROVE_ATTEMPTS_PER_NODE
             ]
             if not valid:
@@ -160,8 +160,3 @@ class Selector:
             candidates.append((root_id, best, plays, ho if maximize else -ho))
         return candidates
 
-
-def _is_hard_leaky(node: SearchNode) -> bool:
-    v = (node.review_verdict or "").lower()
-    c = (node.review_confidence or "").lower()
-    return v == "leaky" and c in {"medium", "high"}

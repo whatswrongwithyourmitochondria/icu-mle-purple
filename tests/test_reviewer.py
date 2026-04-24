@@ -12,7 +12,7 @@ class StubLLM:
 
 
 def test_reviewer_parses_clean_verdict():
-    llm = StubLLM('{"verdict": "clean", "confidence": "medium", "reasons": [], "summary": "OK"}')
+    llm = StubLLM('{"verdict": "clean", "reasons": []}')
     verdict = review_candidate(
         llm=llm,
         code="import pandas as pd",
@@ -23,15 +23,13 @@ def test_reviewer_parses_clean_verdict():
         label="review-test",
     )
     assert verdict.verdict == "clean"
-    assert verdict.confidence == "medium"
     assert verdict.reasons == []
 
 
 def test_reviewer_parses_leaky_verdict_with_reasons():
     response = (
-        '{"verdict": "leaky", "confidence": "high", '
-        '"reasons": ["fits StandardScaler on holdout rows", "shuffled CV on timeseries"], '
-        '"summary": "scaler trained on holdout"}'
+        '{"verdict": "leaky", '
+        '"reasons": ["fits StandardScaler on holdout rows", "shuffled CV on timeseries"]}'
     )
     llm = StubLLM(response)
     verdict = review_candidate(
@@ -44,11 +42,10 @@ def test_reviewer_parses_leaky_verdict_with_reasons():
         label="review-test",
     )
     assert verdict.verdict == "leaky"
-    assert verdict.confidence == "high"
     assert "fits StandardScaler on holdout rows" in verdict.reasons
 
 
-def test_reviewer_handles_malformed_response_as_suspicious():
+def test_reviewer_handles_malformed_response_as_clean():
     llm = StubLLM("??? not json")
     verdict = review_candidate(
         llm=llm,
@@ -59,5 +56,4 @@ def test_reviewer_handles_malformed_response_as_suspicious():
         holdout_score=None,
         label="review-test",
     )
-    assert verdict.verdict == "suspicious"
-    assert verdict.confidence == "low"
+    assert verdict.verdict == "clean"

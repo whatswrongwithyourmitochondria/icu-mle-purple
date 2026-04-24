@@ -65,8 +65,8 @@ class Journal:
             score = n.cv_score if n.cv_score is not None else float("-inf")
             return score if maximize else -score
 
-        non_suspicious = [n for n in valid if not n.is_suspicious and n.review_verdict not in {"leaky"}]
-        pool = non_suspicious or valid
+        non_leaky = [n for n in valid if n.review_verdict != "leaky"]
+        pool = non_leaky or valid
         return max(pool, key=key)
 
     def stats(self) -> dict[str, int]:
@@ -91,11 +91,8 @@ class Journal:
                 "holdout_score": n.holdout_score,
                 "maximize": n.maximize,
                 "is_buggy": n.is_buggy,
-                "is_suspicious": n.is_suspicious,
                 "review_verdict": n.review_verdict,
-                "review_confidence": n.review_confidence,
                 "review_reasons": list(n.review_reasons),
-                "suspicion_reasons": list(n.suspicion_reasons),
                 "improve_hint_index": n.improve_hint_index,
                 "notes": n.notes,
                 "created_at": n.created_at,

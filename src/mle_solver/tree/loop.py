@@ -30,7 +30,6 @@ from ..llm import LLMClient
 from ..prompts import pick_hint
 from .journal import Journal
 from .node import SearchNode
-from .ranking import adjusted_review_penalty, hard_leakage_flag
 from .selector import Selector
 
 logger = logging.getLogger("mle-solver")
@@ -374,12 +373,8 @@ class TreeLoop:
             label=f"review<-{node.id}",
         )
         node.review_verdict = verdict.verdict
-        node.review_confidence = verdict.confidence
         node.review_reasons = list(verdict.reasons)
-        if verdict.verdict in {"suspicious", "leaky"}:
-            node.is_suspicious = True
-            node.suspicion_reasons.extend(verdict.reasons)
-        logger.info(f"[review] {node.id} verdict={verdict.verdict} confidence={verdict.confidence}")
+        logger.info(f"[review] {node.id} verdict={verdict.verdict}")
 
         self.journal.add(node)
 
@@ -406,11 +401,9 @@ class TreeLoop:
         top_k = ranked[: self.cfg.search.final_top_k]
 
         def final_key(n: SearchNode) -> tuple:
-            hard_bad = hard_leakage_flag(n.review_verdict, n.review_confidence)
-            penalty = adjusted_review_penalty(n, top_k, maximize=maximize)
+            leaky = 1 if n.review_verdict == "leaky" else 0
             return (
-                -hard_bad,                 # medium/high-confidence leaky always demoted
-                -penalty,
+                -leaky,
                 score_key(n.holdout_score),
                 score_key(n.cv_score),
                 n.created_at,
