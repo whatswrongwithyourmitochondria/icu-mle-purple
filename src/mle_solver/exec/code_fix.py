@@ -17,6 +17,7 @@ def fix_common_errors(code: str) -> str:
     code = _fix_catboost_logloss(code)
     code = _fix_catboost_early_stopping_conflict(code)
     code = _fix_catboost_od_wait_no_eval(code)
+    code = _fix_astype_category(code)
     return code
 
 
@@ -139,6 +140,22 @@ def _fix_bool_map_nan(code: str) -> str:
     code = re.sub(
         r"(\.map\s*\(\s*\{[^}]*['\"]?True['\"]?\s*:\s*1[^}]*\}\s*\))\s*\.astype\s*\(\s*int\s*\)",
         r"\1.fillna(0).astype(int)",
+        code,
+    )
+    return code
+
+
+def _fix_astype_category(code: str) -> str:
+    """Replace .astype('category') with .astype(str) and convert pd.cut/pd.qcut
+    results to str to avoid Categorical fillna crashes."""
+    code = re.sub(
+        r"\.astype\s*\(\s*['\"]category['\"]\s*\)",
+        ".astype(str)",
+        code,
+    )
+    code = re.sub(
+        r"(pd\.(?:cut|qcut)\([^)]+\))(?!\.astype)",
+        r"\1.astype(str)",
         code,
     )
     return code
