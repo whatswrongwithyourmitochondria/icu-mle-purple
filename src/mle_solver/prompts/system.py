@@ -26,6 +26,9 @@ SYSTEM_PROMPT = dedent(
     - SEED = 42. No pip install. Derive schema from files — don't guess from memory.
     - Prefer one strong model family; in-script blends of 2–3 diverse models are fine
       once the branch is solid.
+    - For images/audio: prefer extracting features from a frozen pretrained model
+      (e.g. ResNet, EfficientNet via timm) then training a fast classifier (LightGBM,
+      LogReg) on top. Fine-tuning is slow on CPU.
     - Do not mask failures with try/except that writes a constant submission.
     - Use any installed library that fits: sklearn, lightgbm, xgboost, catboost,
       torch, torchvision, timm, transformers, torchaudio, scipy, librosa,
