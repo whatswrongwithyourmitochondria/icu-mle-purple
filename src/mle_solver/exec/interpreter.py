@@ -58,6 +58,21 @@ class ExecResult:
         return combined[-limit:]
 
 
+_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
+
+
+def _set_mem_limit() -> None:
+    """Set virtual memory limit for the subprocess."""
+    try:
+        import resource
+        if sys.platform == "linux":
+            resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT_BYTES, _MEM_LIMIT_BYTES))
+        elif sys.platform == "darwin":
+            resource.setrlimit(resource.RLIMIT_RSS, (_MEM_LIMIT_BYTES, _MEM_LIMIT_BYTES))
+    except Exception:
+        pass
+
+
 class Interpreter:
     def __init__(self, *, workspace_dir: Path, data_dir: Path, timeout: float):
         self.workspace_dir = Path(workspace_dir)
@@ -77,8 +92,8 @@ class Interpreter:
                     input_link.unlink()
                 else:
                     shutil.rmtree(input_link)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[interpreter] input cleanup failed for {node_id}: {e}")
         try:
             os.symlink(self.data_dir, input_link, target_is_directory=True)
         except (OSError, NotImplementedError):
@@ -98,6 +113,7 @@ class Interpreter:
                 timeout=self.timeout,
                 encoding="utf-8",
                 errors="replace",
+                preexec_fn=_set_mem_limit,
             )
             rc = proc.returncode
             stdout = proc.stdout or ""

@@ -41,9 +41,23 @@ def detect_fake_success(submission_path: Path, sample_submission_path: Path | No
 
     if sample_submission_path is not None and sample_submission_path.exists():
         try:
+            sample_df = pd.read_csv(sample_submission_path)
+            if len(df) != len(sample_df):
+                return f"submission has {len(df)} rows but expected {len(sample_df)} (from sample_submission)"
             if submission_path.read_bytes() == sample_submission_path.read_bytes():
                 return f"submission is byte-identical to {sample_submission_path.name}"
         except Exception as e:
             logger.debug(f"[fake-success] byte compare failed: {e}")
+
+    if pred_cols and len(df) > 1000:
+        for c in pred_cols:
+            if not pd.api.types.is_numeric_dtype(df[c]):
+                continue
+            nunique = df[c].nunique(dropna=False)
+            if nunique <= 2:
+                continue
+            ratio = nunique / len(df)
+            if ratio < 0.001:
+                return f"prediction column '{c}' has only {nunique} unique values for {len(df)} rows (ratio={ratio:.6f})"
 
     return None

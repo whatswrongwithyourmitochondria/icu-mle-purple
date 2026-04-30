@@ -89,11 +89,13 @@ def run_competition(work_dir: Path) -> bytes:
     if not result.final_candidates:
         raise RuntimeError("[runner] panel produced no candidates")
 
-    # Try blending only clean/non-leaky candidates
+    # Blend the global top 3 clean candidates
+    BLEND_TOP_K = 3
     candidates = result.final_candidates
     clean = [n for n in candidates if n.review_verdict not in ("leaky",) and n.submission_path and n.submission_path.exists()]
     if not clean:
         clean = [n for n in candidates if n.submission_path and n.submission_path.exists()]
+    clean = clean[:BLEND_TOP_K]
     paths = [n.submission_path for n in clean]
     holdouts = [n.holdout_score for n in clean]
 

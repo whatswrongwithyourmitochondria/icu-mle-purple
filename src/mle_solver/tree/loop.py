@@ -30,7 +30,6 @@ from ..llm import LLMClient
 from ..prompts import pick_hint
 from .journal import Journal
 from .node import SearchNode
-from .ranking import adjusted_review_penalty, hard_leakage_flag
 from .selector import Selector
 
 logger = logging.getLogger("mle-solver")
@@ -82,6 +81,7 @@ class TreeLoop:
         self._in_flight_parents: set[str] = set()
         self._started_at = time.time()
         self._rng = random.Random(cfg.seed)
+        self._draft_counter = 0
 
     # ── public entry ─────────────────────────────────────────────────────
 
@@ -106,41 +106,64 @@ class TreeLoop:
         n = self.cfg.search.num_drafts
         logger.info(f"[phase1] generating {n} drafts in parallel")
 
-        def _gen(idx: int) -> SearchNode | None:
-            if self._budget_exhausted():
-                return None
-            try:
-                temp = self._draft_temperature(idx)
-                code = generate_draft_code(
-                    llm=self.llm,
-                    task_desc=self.ctx.task_desc,
-                    data_files=self.ctx.data_files,
-                    data_preview=self.ctx.data_preview,
-                    contract_summary=self.ctx.contract_summary,
-                    env_summary=self.ctx.env_summary,
-                    time_remaining_s=self._remaining(),
-                    disposition=self.ctx.disposition,
-                    variant=idx,
-                    temperature=temp,
-                    label=f"draft_v{idx}",
-                )
-            except Exception as e:
-                logger.exception(f"[phase1] draft {idx} generation failed: {e}")
-                return None
-            node_id = self.journal.next_id("draft")
-            node = SearchNode(
-                id=node_id,
-                stage="draft",
-                code=code or "",
-                parent_id=None,
-                branch_root_id=node_id,
-            )
-            return node
-
         with ThreadPoolExecutor(max_workers=max(1, self.cfg.search.max_parallel)) as ex:
-            drafts = [d for d in ex.map(_gen, range(n)) if d is not None]
+            drafts = [d for d in ex.map(self._make_draft, range(n)) if d is not None]
 
         self._execute_many(drafts)
+
+    def _make_draft(self, variant: int | None = None) -> SearchNode | None:
+        if self._budget_exhausted():
+            return None
+        with self._lock:
+            idx = self._draft_counter
+            self._draft_counter += 1
+        is_dynamic = variant is None
+        if variant is None:
+            variant = idx
+        disposition = self.ctx.disposition
+        if is_dynamic:
+            disposition = self._diversity_disposition(disposition)
+        try:
+            temp = self._draft_temperature(variant)
+            code = generate_draft_code(
+                llm=self.llm,
+                task_desc=self.ctx.task_desc,
+                data_files=self.ctx.data_files,
+                data_preview=self.ctx.data_preview,
+                contract_summary=self.ctx.contract_summary,
+                env_summary=self.ctx.env_summary,
+                time_remaining_s=self._remaining(),
+                disposition=disposition,
+                variant=variant,
+                temperature=temp,
+                label=f"draft_v{variant}",
+            )
+        except Exception as e:
+            logger.exception(f"[draft] draft {variant} generation failed: {e}")
+            return None
+        node_id = self.journal.next_id("draft")
+        return SearchNode(
+            id=node_id,
+            stage="draft",
+            code=code or "",
+            parent_id=None,
+            branch_root_id=node_id,
+        )
+
+    def _diversity_disposition(self, base_disposition: str) -> str:
+        from ..prompts.improve import detect_model_family
+        from collections import Counter
+        families = [
+            detect_model_family(n.code)
+            for n in self.journal
+            if n.is_valid and n.code
+        ]
+        if not families:
+            return base_disposition
+        dominant = Counter(families).most_common(1)[0][0]
+        if dominant == "unknown":
+            return base_disposition
+        return f"{base_disposition}\nExisting solutions all use {dominant}. Use a completely different model family."
 
     def _draft_temperature(self, variant: int) -> float | None:
         if variant < len(self.ctx.variant_temperatures):
@@ -166,10 +189,13 @@ class TreeLoop:
                     excluded=set(self._in_flight_parents),
                     maximize=self.ctx.maximize,
                 )
-                if action is None:
-                    return False
-                self._in_flight_parents.add(action.parent.id)
-            fut = executor.submit(self._step_worker, action.kind, action.parent)
+            if action is not None:
+                with self._lock:
+                    self._in_flight_parents.add(action.parent.id)
+                fut = executor.submit(self._step_worker, action.kind, action.parent)
+            else:
+                logger.info("[phase2] no clean branches — spawning fresh draft")
+                fut = executor.submit(self._draft_worker)
             in_flight.add(fut)
             return True
 
@@ -203,6 +229,11 @@ class TreeLoop:
         finally:
             with self._lock:
                 self._in_flight_parents.discard(parent.id)
+
+    def _draft_worker(self) -> None:
+        draft = self._make_draft()
+        if draft is not None:
+            self._execute_and_record(draft)
 
     def _make_improve(self, parent: SearchNode) -> SearchNode | None:
         if self._budget_exhausted():
@@ -309,6 +340,8 @@ class TreeLoop:
         if fake:
             node.is_buggy = True
             node.notes = f"fake-success: {fake}"
+            result.error_summary = f"The model is not generating meaningful predictions: {fake}"
+            logger.warning(f"[fake-success] {node.id}: {fake}")
             self.journal.add(node)
             return
 
@@ -331,6 +364,19 @@ class TreeLoop:
                 node.notes = "parser flagged as missing scores"
             self.journal.add(node)
             return
+
+        verdict: ReviewVerdict = review_candidate(
+            llm=self.llm,
+            code=node.code,
+            task_desc=self.ctx.task_desc,
+            contract_summary=self.ctx.contract_summary,
+            cv_score=node.cv_score,
+            holdout_score=node.holdout_score,
+            label=f"review<-{node.id}",
+        )
+        node.review_verdict = verdict.verdict
+        node.review_reasons = list(verdict.reasons)
+        logger.info(f"[review] {node.id} verdict={verdict.verdict}")
 
         self.journal.add(node)
 
@@ -355,88 +401,11 @@ class TreeLoop:
             reverse=True,
         )
         top_k = ranked[: self.cfg.search.final_top_k]
-        top_scored_id = top_k[0].id if top_k else ""
-
-        # Reviewer agent runs once per top-K candidate. Verdict feeds into
-        # the final rerank: clean > suspicious > leaky.
-        for node in top_k:
-            if node.review_verdict:
-                continue
-            verdict: ReviewVerdict = review_candidate(
-                llm=self.llm,
-                code=node.code,
-                task_desc=self.ctx.task_desc,
-                contract_summary=self.ctx.contract_summary,
-                cv_score=node.cv_score,
-                holdout_score=node.holdout_score,
-                label=f"review<-{node.id}",
-            )
-            if (
-                node.id == top_scored_id
-                and verdict.verdict == "suspicious"
-                and verdict.confidence in {"medium", "high"}
-            ):
-                first_verdict = verdict.verdict
-                first_confidence = verdict.confidence
-                second = review_candidate(
-                    llm=self.llm,
-                    code=node.code,
-                    task_desc=self.ctx.task_desc,
-                    contract_summary=self.ctx.contract_summary,
-                    cv_score=node.cv_score,
-                    holdout_score=node.holdout_score,
-                    label=f"review2<-{node.id}",
-                    temperature=0.0,
-                )
-                agreement = second.verdict in {"suspicious", "leaky"}
-                if agreement:
-                    merged_verdict = (
-                        "leaky" if "leaky" in {verdict.verdict, second.verdict} else "suspicious"
-                    )
-                    merged_conf = _max_confidence(verdict.confidence, second.confidence)
-                    merged_reasons = _merge_unique(verdict.reasons + second.reasons)
-                    verdict = ReviewVerdict(
-                        verdict=merged_verdict,
-                        confidence=merged_conf,
-                        reasons=merged_reasons,
-                        summary=verdict.summary or second.summary,
-                    )
-                    logger.info(
-                        f"[review] {node.id} consensus=agree "
-                        f"first={first_verdict}/{first_confidence} "
-                        f"second={second.verdict}/{second.confidence}"
-                    )
-                else:
-                    verdict = ReviewVerdict(
-                        verdict="suspicious",
-                        confidence="low",
-                        reasons=_merge_unique(
-                            verdict.reasons
-                            + second.reasons
-                            + ["second reviewer disagreed with suspicion"]
-                        ),
-                        summary=verdict.summary,
-                    )
-                    logger.info(
-                        f"[review] {node.id} consensus=disagree "
-                        f"first={first_verdict}/{first_confidence} "
-                        f"second={second.verdict}/{second.confidence}"
-                    )
-
-            node.review_verdict = verdict.verdict
-            node.review_confidence = verdict.confidence
-            node.review_reasons = list(verdict.reasons)
-            if verdict.verdict in {"suspicious", "leaky"}:
-                node.is_suspicious = True
-                node.suspicion_reasons.extend(verdict.reasons)
-            logger.info(f"[review] {node.id} verdict={verdict.verdict} confidence={verdict.confidence}")
 
         def final_key(n: SearchNode) -> tuple:
-            hard_bad = hard_leakage_flag(n.review_verdict, n.review_confidence)
-            penalty = adjusted_review_penalty(n, top_k, maximize=maximize)
+            leaky = 1 if n.review_verdict == "leaky" else 0
             return (
-                -hard_bad,                 # medium/high-confidence leaky always demoted
-                -penalty,
+                -leaky,
                 score_key(n.holdout_score),
                 score_key(n.cv_score),
                 n.created_at,
@@ -469,23 +438,3 @@ class TreeLoop:
         return self._remaining() <= self.cfg.search.grace_seconds
 
 
-def _max_confidence(a: str, b: str) -> str:
-    order = {"low": 0, "medium": 1, "high": 2}
-    ia = order.get((a or "").lower(), 0)
-    ib = order.get((b or "").lower(), 0)
-    return "high" if max(ia, ib) >= 2 else ("medium" if max(ia, ib) >= 1 else "low")
-
-
-def _merge_unique(items: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in items:
-        s = str(raw).strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(s)
-    return out[:6]

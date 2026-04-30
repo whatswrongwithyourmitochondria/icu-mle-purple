@@ -65,15 +65,23 @@ def blend_submissions(
     return blended[ref_cols].to_csv(index=False).encode()
 
 
-def _weights_from_holdout(scores: list[float | None], maximize: bool) -> list[float]:
+def _weights_from_holdout(
+    scores: list[float | None], maximize: bool, temperature: float = 0.01,
+) -> list[float]:
     valid = [s for s in scores if s is not None]
     if len(valid) < 2:
         return [1.0] * len(scores)
-    baseline = min(valid) if maximize else max(valid)
-    return [
-        max((s - baseline) if maximize else (baseline - s), 1e-6) if s is not None else 0.0
-        for s in scores
-    ]
+    sign = 1.0 if maximize else -1.0
+    raw = [sign * s / temperature if s is not None else None for s in scores]
+    valid_raw = [r for r in raw if r is not None]
+    max_raw = max(valid_raw)
+    weights: list[float] = []
+    for r in raw:
+        if r is None:
+            weights.append(0.0)
+        else:
+            weights.append(np.exp(r - max_raw))
+    return weights
 
 
 def _is_id_col(col: str, ref: pd.DataFrame, dfs: list[pd.DataFrame]) -> bool:

@@ -13,6 +13,11 @@ def fix_common_errors(code: str) -> str:
     code = _fix_lgbm_verbose(code)
     code = _fix_xgb_early_stopping(code)
     code = _fix_bool_astype_int(code)
+    code = _fix_bool_map_nan(code)
+    code = _fix_catboost_logloss(code)
+    code = _fix_catboost_early_stopping_conflict(code)
+    code = _fix_catboost_od_wait_no_eval(code)
+    code = _fix_astype_category(code)
     return code
 
 
@@ -81,6 +86,76 @@ def _fix_bool_astype_int(code: str) -> str:
     code = re.sub(
         r"(\[(?:target_col|['\"]Transported['\"]|['\"]target['\"])\])\s*\.astype\s*\(\s*int\s*\)",
         r"\1.map({'True': 1, 'False': 0, True: 1, False: 0}).astype(int)",
+        code,
+    )
+    return code
+
+
+def _fix_catboost_logloss(code: str) -> str:
+    """Fix CatBoost loss function name: LogLoss → Logloss (case-sensitive)."""
+    code = re.sub(
+        r"""(['"])LogLoss\1""",
+        r"\1Logloss\1",
+        code,
+    )
+    return code
+
+
+def _fix_catboost_early_stopping_conflict(code: str) -> str:
+    """Remove early_stopping_rounds from CatBoost when od_wait is present.
+
+    CatBoost uses od_wait natively. When both od_wait and early_stopping_rounds
+    are passed, CatBoost raises an error.
+    """
+    if "od_wait" in code and "early_stopping_rounds" in code:
+        if "CatBoost" in code or "catboost" in code:
+            code = re.sub(
+                r",?\s*early_stopping_rounds\s*=\s*\d+",
+                "",
+                code,
+            )
+    return code
+
+
+def _fix_catboost_od_wait_no_eval(code: str) -> str:
+    """Remove od_wait from CatBoost constructor when .fit() has no eval_set.
+
+    CatBoost requires eval_set in .fit() when od_wait is set. If eval_set
+    is not present, od_wait causes a crash. Safer to train without early
+    stopping than to crash.
+    """
+    if "od_wait" in code and ("CatBoost" in code or "catboost" in code):
+        if "eval_set" not in code:
+            code = re.sub(r",?\s*od_wait\s*=\s*\d+", "", code)
+    return code
+
+
+def _fix_bool_map_nan(code: str) -> str:
+    """Insert .fillna(0) between .map({True/False...}) and .astype(int).
+
+    When the target column has NaN rows, .map({'True': 1, 'False': 0})
+    preserves them as NaN, then .astype(int) crashes. Runs after
+    _fix_bool_astype_int to catch both LLM-generated and fix-generated chains.
+    """
+    code = re.sub(
+        r"(\.map\s*\(\s*\{[^}]*['\"]?True['\"]?\s*:\s*1[^}]*\}\s*\))\s*\.astype\s*\(\s*int\s*\)",
+        r"\1.fillna(0).astype(int)",
+        code,
+    )
+    return code
+
+
+def _fix_astype_category(code: str) -> str:
+    """Replace .astype('category') with .astype(str) and convert pd.cut/pd.qcut
+    results to str to avoid Categorical fillna crashes."""
+    code = re.sub(
+        r"\.astype\s*\(\s*['\"]category['\"]\s*\)",
+        ".astype(str)",
+        code,
+    )
+    code = re.sub(
+        r"(pd\.(?:cut|qcut)\([^)]+\))(?!\.astype)",
+        r"\1.astype(str)",
         code,
     )
     return code
