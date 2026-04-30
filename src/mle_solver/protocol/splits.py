@@ -59,9 +59,14 @@ def prepare_splits(
     if not train_path.exists():
         alt = _guess_train_file(data_dir)
         if alt is None:
-            logger.warning(f"[splits] no training file found under {data_dir}")
-            return None
-        train_path = alt
+            # No CSV — try creating one from image folders
+            generated = _generate_train_csv_from_images(data_dir)
+            if generated is None:
+                logger.warning(f"[splits] no training file found under {data_dir}")
+                return None
+            train_path = generated
+        else:
+            train_path = alt
 
     try:
         df = pd.read_csv(train_path)
@@ -131,6 +136,27 @@ def _guess_train_file(data_dir: Path) -> Path | None:
             continue
         return p
     return None
+
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+
+
+def _generate_train_csv_from_images(data_dir: Path) -> Path | None:
+    """Create a train.csv listing image filenames if a train/ folder exists."""
+    train_dir = data_dir / "train"
+    if not train_dir.is_dir():
+        return None
+    images = sorted(
+        f.name for f in train_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in _IMAGE_EXTS
+    )
+    if not images:
+        return None
+    df = pd.DataFrame({"image": images})
+    out = data_dir / "train.csv"
+    df.to_csv(out, index=False)
+    logger.info(f"[splits] generated train.csv from {len(images)} images in train/")
+    return out
 
 
 def _is_classification_target(series: pd.Series) -> bool:

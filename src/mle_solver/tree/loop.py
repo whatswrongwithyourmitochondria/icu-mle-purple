@@ -340,6 +340,8 @@ class TreeLoop:
         if fake:
             node.is_buggy = True
             node.notes = f"fake-success: {fake}"
+            result.error_summary = f"The model is not generating meaningful predictions: {fake}"
+            logger.warning(f"[fake-success] {node.id}: {fake}")
             self.journal.add(node)
             return
 

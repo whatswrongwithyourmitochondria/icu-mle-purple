@@ -41,9 +41,11 @@ _SYS = dedent(
     - Binning thresholds (pd.qcut, pd.cut, percentiles) computed on combined data
     - Feature engineering on full dataframe before subsetting, including row-wise ops and non-target group aggregations (GroupSize, FamilySize, frequency features)
     - One-hot encoding on combined train+test
+    - Mapping target column to 0/1 (e.g. .map({'True':1,'False':0})) — this is not target encoding
+    - Using holdout as eval_set for early stopping — standard practice
     - Using _splits.csv to separate dev/holdout and only training on dev rows
 
-    Only flag what you can point to in the code with a specific line or pattern.
+    Judge only by what the code actually does, not by comments or variable names.
     If the code properly loads _splits.csv and only trains on dev rows, it is likely clean.
 
     Return ONLY a JSON object:
