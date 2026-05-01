@@ -94,14 +94,12 @@ def _is_id_col(col: str, ref: pd.DataFrame, dfs: list[pd.DataFrame]) -> bool:
 
 
 def _is_binary_col(col: str, dfs: list[pd.DataFrame]) -> bool:
-    if pd.api.types.is_bool_dtype(dfs[0][col]):
-        return True
     if not pd.api.types.is_numeric_dtype(dfs[0][col]):
         return False
     unique = set()
     for df in dfs:
         unique.update(df[col].dropna().unique().tolist())
-    return bool(unique) and unique <= {0, 1, 0.0, 1.0, True, False}
+    return bool(unique) and unique <= {0, 1}
 
 
 def _weighted_mode(series_list: list[pd.Series], weights: list[float]) -> list:
