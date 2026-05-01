@@ -58,7 +58,7 @@ class ExecResult:
         return combined[-limit:]
 
 
-_MEM_LIMIT_BYTES = 16 * 1024 * 1024 * 1024  # 16 GB
+_MEM_LIMIT_BYTES = 6 * 1024 * 1024 * 1024  # 6 GB
 
 
 def _set_mem_limit() -> None:

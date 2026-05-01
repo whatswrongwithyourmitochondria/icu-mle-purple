@@ -22,15 +22,16 @@ llm:
 search:
   num_drafts: 2              # sibling drafts per seat
   max_steps: 90             # total nodes per seat (drafts + improve + debug)
-  max_parallel: 2            # pipelined workers inside one seat
-  pass_k: 3                  # number of isolated seats on the panel
+  max_parallel: 1            # pipelined workers inside one seat
+  pass_k: 1                  # number of isolated seats on the panel
   ucb_explore_c: 1.0         # UCB exploration coefficient for branch selection
   max_debug_attempts_per_node: 2
   final_top_k: 3             # candidates reviewed + returned per seat
   grace_seconds: 180         # don't spawn new work under this remaining
   holdout_fraction: 0.20     # runner-owned dev/holdout split
   n_folds: 3                 # cv folds across dev rows
-  dispositions: []           # override default speed/data-first/go-big triplet
+  dispositions:              # single seat: use the strongest all-round disposition
+    - "Push model capacity. For images/text/audio/sequences, use the right deep learning stack (torchvision, timm, transformers, torchaudio). For tabular, spend compute on a well-tuned GBDT with thoughtful features."
   seat_temperatures: [0.5, 0.7, 0.9]   # one per seat; falls back to llm.temperature if fewer than pass_k
 
 exec:
