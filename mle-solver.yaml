@@ -15,15 +15,15 @@ llm:
   base_url: "https://api.tokenfactory.us-central1.nebius.com/v1/"
   api_key: ""
   temperature: 0.7
-  max_tokens: 81920
+  max_tokens: 32768
   timeout: 600
   max_retries: 3
 
 search:
   num_drafts: 2              # sibling drafts per seat
   max_steps: 90             # total nodes per seat (drafts + improve + debug)
-  max_parallel: 1            # pipelined workers inside one seat
-  pass_k: 1                  # number of isolated seats on the panel
+  max_parallel: 2            # pipelined workers inside one seat
+  pass_k: 3                  # number of isolated seats on the panel
   ucb_explore_c: 1.0         # UCB exploration coefficient for branch selection
   max_debug_attempts_per_node: 2
   final_top_k: 3             # candidates reviewed + returned per seat
