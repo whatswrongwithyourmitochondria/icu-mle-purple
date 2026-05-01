@@ -6,7 +6,7 @@
 #  threshold to tune.
 # ============================================================
 
-time_limit: 30600
+time_limit: 12600
 seed: 42
 log_level: INFO
 
