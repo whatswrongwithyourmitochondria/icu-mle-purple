@@ -64,7 +64,11 @@ def run_competition(work_dir: Path) -> bytes:
     data_preview = _build_data_preview(data_dir)
     env_summary = _env_summary()
     direction_label = "higher is better" if contract.maximize else "lower is better"
-    sample_submission_path = data_dir / "sample_submission.csv"
+    _SAMPLE_NAMES = ("sample_submission.csv", "sampleSubmission.csv", "SampleSubmission.csv")
+    sample_submission_path = next(
+        (data_dir / n for n in _SAMPLE_NAMES if (data_dir / n).exists()),
+        data_dir / "sample_submission.csv",
+    )
 
     def build_context(seat_cfg: Config, seat_index: int) -> RunContext:
         return RunContext(
