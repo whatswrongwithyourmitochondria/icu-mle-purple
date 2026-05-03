@@ -6,8 +6,6 @@ MLE-bench evaluates how well AI agents perform real-world machine learning engin
 
 This agent serves A2A requests, unpacks a competition bundle, runs a tree/panel search over candidate `solution.py` programs, and returns `submission.csv`.
 
-Current reported result: this implementation achieved a top benchmark score of **0.83103** on **`spaceship-titanic`**. (13th April, 2026)
-
 ## Scope and Positioning
 
 - Target platform: AgentBeats purple-agent flow
@@ -72,11 +70,10 @@ icu-mle-purple/
 └─ README.md                     # Documentation
 ```
 
-
 ## What Is Novel in This Implementation
 
 - Panelized pass@K seats: multiple independent search seats run in parallel with different seeds, temperatures, and dispositions, then merge globally.
-- Tree search over code variants: each seat runs `draft -> improve/debug -> finalize` instead of one monolithic attempt.
+- Tree search over code variants: each seat runs draft -> improve/debug -> finalize instead of one monolithic attempt.
 - UCB (Upper Confidence Bound)-style branch selection: branch expansion uses exploration/exploitation tradeoff (inspired by MLEvolve, AIDE ML implementations, and Monte-Carlo graph/tree search ideas).
 - Debug-first policy with bounded repair budget: broken branches are repaired early, with explicit caps.
 - Runner-owned protocol split: holdout/CV protocol is prepared in the runner to reduce leakage-prone freedom in candidate code.
@@ -85,117 +82,125 @@ icu-mle-purple/
 - Diversity + final blending: seat diversity is intentional, and top clean candidates are blended using holdout-weighted ensembling when possible.
 
 ### UCB Selection Details
-
-In `src/mle_solver/tree/selector.py`, improve-step parent selection is branch-level UCB:
+In src/mle_solver/tree/selector.py, improve-step parent selection is branch-level UCB:
 
 ```text
-UCB(branch i) = mean_reward_i + c * sqrt( ln(total_plays + 1) / (plays_i + 1) )
+UCB(branch i) = mean_reward_i + c * sqrt( ln(total_plays + 1) / (plays_i + 1))
 ```
-
 Where:
+- c = ucb_explore_c from config (default 1.0)
+- plays_i = number of prior improve nodes in branch i
+- total_plays = sum of plays_i over candidate branches
+- mean_reward_i is min-max normalized branch score (not raw CV):
 
-- `c = ucb_explore_c` from config (default `1.0`)
-- `plays_i` = number of prior `improve` nodes in branch `i`
-- `total_plays` = sum of `plays_i` over candidate branches
-- `mean_reward_i` is min-max normalized branch score (not raw CV):
 
 ```text
-score_i = best_valid_cv_in_branch_i             (or -cv for minimize metrics)
 mean_reward_i = (score_i - min(score)) / (max(score) - min(score))
+score_i = best_valid_cv_in_branch_i (or -cv for minimize metrics)
 ```
 
-If all branches have the same score, denominator is set to `1.0`, so all `mean_reward_i = 0`.
+- If all branches have the same score, denominator is set to 1.0, so all mean_reward_i = 0.
+- Debug policy is applied before UCB: buggy nodes are repaired first (up to max_debug_attempts_per_node) unless the branch already has a valid candidate.
 
-Debug policy is applied before UCB: buggy nodes are repaired first (up to `max_debug_attempts_per_node`) unless the branch already has a valid candidate.
-
-### Blending Coefficients
-
-In `src/mle_solver/ensemble.py`, blend weights are derived from holdout scores, then normalized:
+## Blending Coefficients
+In src/mle_solver/ensemble.py, blend weights are computed from holdout scores via a temperature‑scaled softmax, not a simple baseline difference.
 
 ```text
-baseline = min(valid_holdouts)   if maximize
-baseline = max(valid_holdouts)   if minimize
+sign = 1.0   if maximize
+sign = -1.0  if minimize
 
-raw_weight_i = max(holdout_i - baseline, 1e-6)         if maximize
-raw_weight_i = max(baseline - holdout_i, 1e-6)         if minimize
-raw_weight_i = 0.0                                     if holdout_i is missing
-
-norm_weight_i = raw_weight_i / sum(raw_weight)
+raw_i = sign * holdout_score_i / temperature      (temperature = 0.01, hardcoded)
+exp_i = exp(raw_i - max(raw_valid))               (only over valid scores)
+weight_i = exp_i / sum(exp_j)
 ```
 
-Edge behavior:
+**Edge behavior**:
 
-- If fewer than 2 valid holdout scores exist, all candidates get equal raw weight `1.0`.
+- If fewer than 2 valid holdout scores exist, all candidates receive equal raw weight (1.0) and uniform blending.
 - Candidates with missing files, unreadable CSVs, or column mismatches are skipped.
 - At least 2 valid submissions are required to blend; otherwise the system falls back to the best single candidate.
 
-Per-column blending:
-
-- ID-like columns are copied from the reference file (must match across candidates).
-- Binary columns use weighted vote with threshold `>= 0.5`.
+**Per-column blending**:
+- like columns are copied from the reference file (must match across candidates).
+- Binary columns use weighted vote with threshold >= 0.5.
 - Numeric columns use weighted average.
 - Non-numeric columns use weighted mode.
 
 ## Model, Provider, and Current Parameters
+Current setup uses *Qwen3.5-397B-A17B-fast* through Nebius 
+Provider: https://tokenfactory.nebius.com/
 
-Current setup uses **Qwen3.5-397B-A17B-fast** through **Nebius** (https://tokenfactory.nebius.com/).
+## Cost
+As of April 2026, Nebius Token Factory pricing for the fast flavor is:
 
-To use reasoning models like `gpt-5.4` with reasoning effort, adjust provider/model parameters and any client-specific settings accordingly.
+```yaml
+Input (per 1M tokens): $0.60
+Output (per 1M tokens): $3.60
+```
+Batch inference is billed at 50 % of the base real-time price.
+
+## Configuration
+
+The committed mle-solver.yaml reflects the active parameters to run on agentbeats platform:
 
 ```yaml
 llm:
-  model: Qwen/Qwen3.5-397B-A17B-fast
-  base_url: "https://api.tokenfactory.us-central1.nebius.com/v1/"
+  model: Qwen/Qwen3.5-397B-A17B
+  base_url: "https://api.tokenfactory.nebius.com/v1/"
   api_key: ""
-  temperature: 0.6
-  max_tokens: 16000
+  temperature: 0.7
+  max_tokens: 32768
   timeout: 600
   max_retries: 3
 
 search:
   num_drafts: 2
-  max_steps: 40
-  max_parallel: 2
-  pass_k: 3
+  max_steps: 90 #(60-90 recommended)
+  max_parallel: 1 #(2 recommneded)
+  pass_k: 1 #(3 recommended)
   ucb_explore_c: 1.0
   max_debug_attempts_per_node: 2
   final_top_k: 3
   grace_seconds: 180
   holdout_fraction: 0.20
   n_folds: 3
-  dispositions: []
-  seat_temperatures: [0.5, 0.6, 0.9]
+  dispositions: "Push model capacity by exploring deeper trees, wider ensembles,
+  and extra feature engineering. Prefer gradient boosted trees (XGBoost, LightGBM, CatBoost) for tabular data;
+  neural networks for imagery, text, or specialized tasks. Use cross-validation scores (holdout fraction 0.2, n_folds 3)
+  to guide search. When stuck, try new feature interactions, different model families, or ensembling diverse models."
+  seat_temperatures: [0.7] #[0.5, 0.7, 0.9]
+
+time_limit: 12600
+
+exec:
+  timeout: 3600
 ```
 
-## Prerequisites
 
-1. Clone this repository:
+## Prerequisites
+Clone this repository:
 
 ```bash
 git clone --branch main https://github.com/whatswrongwithyourmitochondria/icu-mle-purple.git
 cd icu-mle-purple
 ```
 
-2. Clone MLE-bench as well (for local benchmark workflows and assets):
+Clone MLE-bench as well (for local benchmark workflows and assets):
 
 ```bash
 git clone https://github.com/openai/mle-bench.git
 ```
 
 ## Running Locally
-
 Use at least two terminals.
 
-### Terminal 1: run first agent
-
+Terminal 1: run first agent
 ```bash
 cd icu-mle-purple
 uv sync
 uv run src/server.py --port 9009
 ```
-
-### Terminal 2: run second agent (for local assessment scenarios)
-
+Terminal 2: run second agent (for local assessment scenarios)
 ```bash
 cd icu-mle-purple
 uv run src/server.py --port 9010
@@ -203,81 +208,65 @@ uv run src/server.py --port 9010
 
 Agent card examples:
 
-- `http://127.0.0.1:9009/.well-known/agent-card.json`
-- `http://127.0.0.1:9010/.well-known/agent-card.json`
+http://127.0.0.1:9009/.well-known/agent-card.json
+http://127.0.0.1:9010/.well-known/agent-card.json
 
-## Running with Docker
-
+### Running with Docker
 Use two terminals as well.
 
-### Terminal 1: build and run container
-
+Terminal 1: build and run container
 ```bash
 cd icu-mle-purple
 docker build -t my-agent .
 docker run -p 9009:9009 my-agent
 ```
-
-### Terminal 2: run tests against the containerized agent
-
+Terminal 2: run tests against the containerized agent
 ```bash
 cd icu-mle-purple
 uv sync --extra test
 uv run pytest --agent-url http://localhost:9009
 ```
-
-## Testing
-
+**Testing**:
 Run A2A conformance-style checks against a running agent.
 
-### Terminal A: start agent (local or docker)
-
+Terminal A: start agent (local or docker)
 Local:
 
 ```bash
 uv run src/server.py --port 9009
 ```
-
 Docker:
-
 ```bash
 docker run -p 9009:9009 my-agent
 ```
-
-### Terminal B: run tests
-
+Terminal B: run tests
 ```bash
 cd icu-mle-purple
 uv sync --extra test
 uv run pytest --agent-url http://localhost:9009
 ```
 
-Optional quick connectivity test:
+### Optional quick connectivity test:
 
 ```bash
 uv run pytest tests/test_agent.py -q --agent-url http://localhost:9009
 ```
 
 ## Local Assessment Script
+This repo includes test_assessment.py to run local green-vs-purple style assessment.
 
-This repo includes `test_assessment.py` to run local green-vs-purple style assessment.
-
-Example command (`spaceship-titanic`):
+**Example command (spaceship-titanic):**
 
 ```bash
 uv run test_assessment.py --green-port 9009 --purple-port 9010 --competition spaceship-titanic
 ```
-
 ## Environment
+At minimum, set API credentials in .env:
 
-At minimum, set API credentials in `.env`:
+- NEBIUS_API_KEY
+- KAGGLE creds
 
-- `NEBIUS_API_KEY` (Nebius provider)
-
-The code also supports provider-based fallback env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) depending on configured `base_url`.
-
-## References
-
+## References:
 - AgentBeats tutorial: https://docs.agentbeats.dev/tutorial/
 - AgentBeats MLE-bench page: https://agentbeats.dev/agentbeater/mle-bench
 - A2A protocol: https://a2a-protocol.org/latest/
@@ -288,5 +277,4 @@ The code also supports provider-based fallback env vars (`OPENAI_API_KEY`, `ANTH
 - AIDE ML code: https://github.com/WecoAI/aideml
 - Monte-Carlo Graph Search talk: https://eleurent.github.io/monte-carlo-graph-search/paper/talk/talk.pdf
 - Monte-Carlo Graph Search paper: https://proceedings.mlr.press/v129/leurent20a/leurent20a.pdf
-- Monte-Carlo Graph Search supplementary: https://proceedings.mlr.press/v129/leurent20a/leurent20a-supp.pdf
 
