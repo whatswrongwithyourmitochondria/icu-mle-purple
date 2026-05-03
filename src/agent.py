@@ -37,6 +37,14 @@ class Agent:
 
         work_dir = await self._prepare_work_dir()
         _extract_tar(tar_bytes, work_dir)
+        del tar_bytes  # free ~450 MB decoded bytes — no longer needed after extraction
+
+        # Release the base64 payload from the message (~600 MB) so it doesn't
+        # sit in memory for the entire duration of run_competition().
+        for part in message.parts:
+            if isinstance(part.root, FilePart) and isinstance(part.root.file, FileWithBytes):
+                part.root.file.bytes = ""
+
         logger.info(f"Extracted competition data to: {work_dir}")
 
         await updater.update_status(
